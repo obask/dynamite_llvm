@@ -1,11 +1,9 @@
-cmake_minimum_required(VERSION 2.8.4)
+cmake_minimum_required(VERSION 3.0.0)
 project(dynamite_llvm)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-set(LLVM_DIR "/opt/local/libexec/llvm-3.6/share/llvm/cmake")
 
 find_package(LLVM REQUIRED CONFIG)
-
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
@@ -19,7 +17,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 # Now build our tools
-set(SOURCE_FILES main.cpp)
+set(SOURCE_FILES lisp.cpp)
 add_executable(dynamite_llvm ${SOURCE_FILES})
 
 # Find the libraries that correspond to the LLVM components
