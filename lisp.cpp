@@ -3,6 +3,24 @@
 #include <unordered_map>
 #include <list>
 #include <unordered_set>
+#include <Python/Python.h>
+
+#include "llvm/Analysis/Passes.h"
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/MCJIT.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/PassManager.h"
+
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Transforms/Scalar.h"
+
 
 #include "ltoken.hpp"
 #include "SyntaxTree.hpp"
@@ -186,12 +204,309 @@ void print_state(const StateX& st) {
     cout << "--" << endl;
 }
 
+using namespace llvm;
+
+static Module *TheModule;
+static IRBuilder<> Builder(getGlobalContext());
+static std::map<std::string, AllocaInst *> NamedValues;
+static FunctionPassManager *TheFPM;
+static ExecutionEngine *TheExecutionEngine;
+
+
+
+unordered_map<string, unordered_map<string, int> > DeclState;
+
+// Special case '=' because we don't want to emit the LHS as an expression.
+//if (Op == '=') {
+//// Assignment requires the LHS to be an identifier.
+//VariableExprAST *LHSE = dynamic_cast<VariableExprAST *>(LHS);
+//if (!LHSE)
+//return ErrorV("destination of '=' must be a variable");
+//// Codegen the RHS.
+//Value *Val = RHS->Codegen();
+//if (Val == 0)
+//return 0;
+//
+//// Look up the name.
+//Value *Variable = NamedValues[LHSE->getName()];
+//if (Variable == 0)
+//return ErrorV("Unknown variable name");
+//
+//Builder.CreateStore(Val, Variable);
+//return Val;
+//}
+
+
+Value *handleCall(string Op, vector<SyntaxTreeP> args);
+void handleIR(SyntaxTreeP tree);
+
+
+Value *handleValue(SyntaxTreeP tt) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleValue: " << tt->toString() << endl;
+
+    if (typeid(*tt) == typeid(ASymbol)) {
+        string var = tt->getString();
+        AllocaInst *Vxx = NamedValues[var];
+        return Builder.CreateLoad(Vxx, var.c_str());
+    }
+
+    if (typeid(*tt) == typeid(ANumber)) {
+        shared_ptr<ANumber> num = dynamic_pointer_cast<ANumber>(tt);
+        return ConstantInt::get(C, APInt(32, num->value));
+    }
+
+    if (typeid(*tt) == typeid(ADouble)) {
+        shared_ptr<ADouble> num = dynamic_pointer_cast<ADouble>(tt);
+        return ConstantFP::get(C, APFloat(num->value));
+    }
+
+    if (typeid(*tt) == typeid(ABranch)) {
+        string fun = tt->elemAt(0)->getString();
+        int sz = (int) tt->getVector().size();
+        vector<SyntaxTreeP> args;
+        for (int i = 1; i < sz; ++i) {
+            args.push_back(tt->elemAt(i));
+        }
+        return handleCall(fun, args);
+    }
+
+    throw std::logic_error(tt->toString());
+
+//    return NULL;
+}
+
+
+Value *handleCall(string Op, vector<SyntaxTreeP> args) {
+    cout << "handleCall " << Op << " : " << args.size() << endl;
+
+    vector<Value *> calc_args;
+    for (auto arg: args) {
+        if (arg == NULL) {
+            cout << "NULL" << endl;
+            throw std::logic_error("null error");
+        }
+        Value *RZ = handleValue(arg);
+        if (RZ) {
+            calc_args.push_back(RZ);
+        } else {
+            throw std::logic_error("Value *handleCall(string Op, vector<SyntaxTreeP> args)");
+        }
+    }
+    cout << "Args calculated" << endl;
+
+    if (Op == "+") {
+//        return Builder.CreateFAdd(calc_args[0], calc_args[1], "addtmp");
+        return Builder.CreateAdd(calc_args[0], calc_args[1], "addtmp");
+
+    }
+    if (Op == "-") {
+        return Builder.CreateSub(calc_args[0], calc_args[1], "subtmp");
+//        return Builder.CreateFSub(calc_args[0], calc_args[1], "subtmp");
+    }
+    if (Op == "*") {
+        return Builder.CreateMul(calc_args[0], calc_args[1], "multmp");
+//        return Builder.CreateFMul(calc_args[0], calc_args[1], "multmp");
+    }
+    if (Op == "<") {
+        // FIXME convert to int
+        Value *L = Builder.CreateFCmpULT(calc_args[0], calc_args[1], "cmptmp");
+        // Convert bool 0/1 to double 0.0 or 1.0
+        return Builder.CreateUIToFP(L, Type::getDoubleTy(getGlobalContext()), "booltmp");
+    }
+
+    // If it wasn't a builtin binary operator, it must be a user defined one. Emit
+    // a call to it.
+    Function *F = TheModule->getFunction(Op);
+    assert(F && "binary operator not found!");
+
+//    Value *Ops[] = { L, R };
+    return Builder.CreateCall(F, calc_args, "binop");
+}
+
+
+Function *handleDefun(SyntaxTreeP tree) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleDefun" << endl;
+
+    string name = tree->elemAt(1)->getString();
+    vector<SyntaxTreeP> proto = tree->elemAt(2)->getVector();
+    vector<string> args;
+
+    cout << "DBG 2" << endl;
+
+    for (SyntaxTreeP az: proto) {
+        args.push_back(az->getString());
+    }
+
+    FunctionType *FT = FunctionType::get(Type::getInt32Ty(C), {}, false);
+    Function *theFunction = Function::Create(FT, Function::ExternalLinkage, name, TheModule);
+
+    cout << "DBG 3" << endl;
+    // Create a new basic block to start insertion into.
+    BasicBlock *BB = BasicBlock::Create(C, "entry", theFunction);
+    Builder.SetInsertPoint(BB);
+
+    cout << "DBG 4" << endl;
+
+    vector<SyntaxTreeP> body;
+    int sz = (int)tree->getVector().size();
+    for (int i=3; i < sz; ++i) {
+        body.push_back(tree->elemAt(i));
+    }
+    Value *RetVal;
+
+    cout << "BODY:" << endl;
+    for (SyntaxTreeP tmp: body) {
+        cout << "-> " << tmp->toString() << endl;
+    }
+
+
+    for (auto xx: body) {
+        RetVal = handleValue(xx);
+    }
+
+    if (RetVal) {
+        // Finish off the function.
+        Builder.CreateRet(RetVal);
+
+        // Validate the generated code, checking for consistency.
+        verifyFunction(*theFunction);
+
+        // Optimize the function.
+        TheFPM->run(*theFunction);
+
+        return theFunction;
+    } else {
+        return NULL;
+    }
+}
+
+
+void handleObject(SyntaxTreeP tree) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleObject" << endl;
+
+    string name = tree->elemAt(1)->getString();
+    vector<string> args;
+    int sz = (int)tree->getVector().size();
+    for (int i=2; i < sz; ++i) {
+        args.push_back(dynamic_pointer_cast<ASymbol>(tree->elemAt(i))->value);
+    }
+
+    StructType *StructTy_struct_list = TheModule->getTypeByName("struct.list");
+    if (!StructTy_struct_list) {
+        StructTy_struct_list = StructType::create(C, "struct.list");
+    }
+    PointerType* PointerTy_struct_list = PointerType::getUnqual(StructTy_struct_list);
+    if (StructTy_struct_list->isOpaque()) {
+        StructTy_struct_list->setBody(Type::getInt32Ty(C), PointerTy_struct_list, Type::getInt32Ty(C), NULL);
+    }
+    return;
+}
+
+
+void handleSet(SyntaxTreeP tree) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleSet" << endl;
+
+    string name = tree->elemAt(1)->getString();
+    SyntaxTreeP body = tree->elemAt(2);
+
+    FunctionType *FT = FunctionType::get(Type::getDoubleTy(C), {}, false);
+    Function *repl = Function::Create(FT, Function::ExternalLinkage, "REPL", TheModule);
+
+    // Create a new basic block to start insertion into.
+    BasicBlock *BB = BasicBlock::Create(C, "entry", repl);
+    Builder.SetInsertPoint(BB);
+    handleValue(body);
+    return;
+}
+
+
+void handleIR(SyntaxTreeP tree) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleIR " << tree->toString() << endl;
+
+    SyntaxTreeP tmp2 = tree->elemAt(0);
+    shared_ptr<ASymbol> cmd = dynamic_pointer_cast<ASymbol>(tmp2);
+
+    if (cmd->value == "object") {
+        return handleObject(tree);
+    }
+
+    if (cmd->value == "defun") {
+        handleDefun(tree);
+        return;
+    }
+
+    if (cmd->value == "set") {
+        return handleSet(tree);
+    }
+    // else call
+
+    handleValue(tree);
+
+    throw std::logic_error("Not implemented yet\n");
+
+//    AllocaInst* ptr_ptr1 = Builder.CreateAlloca(PointerTy_struct_list, 0, "ptr");
+//    AllocaInst* ptr_ptr2 = Builder.CreateAlloca(PointerTy_tmp1, 0, "ptr2");
+//
+//
+//    Value *RetVal = ConstantFP::get(C, APFloat(7.0));
+//
+//    Type* IntPtrTy = IntegerType::getInt32Ty(C);
+//    Type* Int8Ty = IntegerType::getDoubleTy(C);
+//    Constant* allocsize = ConstantExpr::getSizeOf(Int8Ty);
+//    allocsize = ConstantExpr::getTruncOrBitCast(allocsize, IntPtrTy);
+//
+//    Instruction* ptr_arr = CallInst::CreateMalloc(BB, IntPtrTy, Int8Ty, allocsize);
+//
+//    Value *t1 = Builder.Insert(ptr_arr);
+//
+//    Value *mydata = Builder.CreateAlloca(Type::getDoublePtrTy(C));
+//
+//    Builder.CreateStore(t1, mydata);
+//
+//
+//
+//    // Finish off the function.
+//    Builder.CreateRet(RetVal);
+//
+//    // Validate the generated code, checking for consistency.
+//    verifyFunction(*repl);
+
+
+}
+
+
+void finishLLVM() {
+    // Optimize the function.
+//  TheFPM->run(*repl);
+
+    TheModule->dump();
+
+    Function *repl = TheModule->getFunction("main");
+
+    if (!repl) {
+        throw std::logic_error("finishLLVM main not found");
+    }
+
+    TheExecutionEngine->finalizeObject();
+    // JIT the function, returning a function pointer.
+    void *FPtr = TheExecutionEngine->getPointerToFunction(repl);
+    // Cast it to the right type (takes no arguments, returns a double) so we
+    // can call it as a native function.
+    int (*FP)() = (int (*)())(intptr_t)FPtr;
+    fprintf(stderr, "Evaluated to %d\n", FP());
+
+}
+
 
 
 int main() {
     string program;
-    program += "(define fac (lambda (a b) (+ a b))) \n";
-    program += "(fac 1 2)\n";
+    program += "(defun main () (+ 11 12)) \n";
 
     cout << "program:" << endl;
     cout << program << endl;
@@ -209,15 +524,65 @@ int main() {
         cout << cmd->toString() << endl;
     }
 
-    StateX st;
-    for (auto cmd: ast) {
-        auto res0 = evalAST(cmd, st);
-        print_state(st);
-        cout << res0->toString() << endl;
+    InitializeNativeTarget();
+    InitializeNativeTargetAsmPrinter();
+    InitializeNativeTargetAsmParser();
+    LLVMContext &Context = getGlobalContext();
+
+    // Prime the first token.
+    //  fprintf(stderr, "ready> ");
+    //  getNextToken();
+
+    // Make the module, which holds all the code.
+    std::unique_ptr<Module> Owner = make_unique<Module>("my cool jit", Context);
+    TheModule = Owner.get();
+
+    // Create the JIT.  This takes ownership of the module.
+    std::string ErrStr;
+    TheExecutionEngine =
+            EngineBuilder(std::move(Owner))
+                    .setErrorStr(&ErrStr)
+                    .setMCJITMemoryManager(llvm::make_unique<SectionMemoryManager>())
+                    .create();
+    if (!TheExecutionEngine) {
+        fprintf(stderr, "Could not create ExecutionEngine: %s\n", ErrStr.c_str());
+        exit(1);
     }
 
-    cout << "finish!" << endl;
+    FunctionPassManager OurFPM(TheModule);
 
+    // Set up the optimizer pipeline.  Start with registering info about how the
+    // target lays out data structures.
+    TheModule->setDataLayout(TheExecutionEngine->getDataLayout());
+    OurFPM.add(new DataLayoutPass());
+    // Provide basic AliasAnalysis support for GVN.
+    OurFPM.add(createBasicAliasAnalysisPass());
+    // Promote allocas to registers.
+    OurFPM.add(createPromoteMemoryToRegisterPass());
+    // Do simple "peephole" optimizations and bit-twiddling optzns.
+    OurFPM.add(createInstructionCombiningPass());
+    // Reassociate expressions.
+    OurFPM.add(createReassociatePass());
+    // Eliminate Common SubExpressions.
+    OurFPM.add(createGVNPass());
+    // Simplify the control flow graph (deleting unreachable blocks, etc).
+    OurFPM.add(createCFGSimplificationPass());
+
+    OurFPM.doInitialization();
+
+    // Set the global so the code gen can use this.
+    TheFPM = &OurFPM;
+
+    cout << "Codegen: " << ast.size() << endl;
+    for (auto cmd: ast) {
+        handleIR(cmd);
+//        auto res0 = createIR(cmd);
+//        cout << res0->toString() << endl;
+    }
+
+    finishLLVM();
+
+    cout << "finish!" << endl;
 
     return 0;
 }

@@ -30,6 +30,9 @@ public:
     SyntaxTreeKind getSubclassID() const { return SubclassID; }
     SyntaxTree(SyntaxTreeKind K) : SubclassID(K) {}
 
+    virtual vector<shared_ptr<SyntaxTree> > getVector() {return {}; }
+    virtual shared_ptr<SyntaxTree> elemAt(int i) { return NULL; }
+    virtual string getString() { return ""; }
     virtual string toString() = 0;
     virtual ~SyntaxTree() {}
 };
@@ -55,6 +58,15 @@ public:
         return value;
     }
 
+    virtual vector<SyntaxTreeP> getVector() override {
+        return value;
+    }
+
+    virtual SyntaxTreeP elemAt(int i) override {
+        return value.at(i);
+    }
+
+
     virtual string toString() override {
         string res = "[ ";
         for (SyntaxTreeP x: value) {
@@ -65,6 +77,7 @@ public:
     }
 
 };
+
 
 class ALeaf : public SyntaxTree {
 public:
@@ -85,6 +98,10 @@ struct ASymbol: ALeaf {
     string value;
     ASymbol(string _value) : ALeaf(NK_Symbol), value(_value)
     {}
+
+    virtual string getString() override {
+        return value;
+    }
 
     virtual string toString() override {
         return "\"" + this->value + "\"";
