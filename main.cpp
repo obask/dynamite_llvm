@@ -320,22 +320,30 @@ static void handleMalloc() {
 static void handleStruct() {
   LLVMContext &C = getGlobalContext();
 
+  GlobalVariable* gvar_int32_xx = new GlobalVariable(/*Module=*/*TheModule,
+          /*Type=*/IntegerType::getInt32Ty(C),
+          /*isConstant=*/true,
+          /*Linkage=*/GlobalValue::ExternalLinkage,
+          /*Initializer=*/0, // has initializer, specified below
+          /*Name=*/"xx");
+  gvar_int32_xx->setAlignment(4);
+
+  ConstantInt* const_int32_7 = ConstantInt::get(C, APInt(32, 1234));
+  gvar_int32_xx->setInitializer(const_int32_7);
+
+
+
+  std::vector<Type*> tt = {Type::getInt32Ty(C)};
+  StructType *StructTy_Object = StructType::create(tt, "struct.object");
+
   StructType *StructTy_struct_list = TheModule->getTypeByName("struct.list");
   if (!StructTy_struct_list) {
     StructTy_struct_list = StructType::create(C, "struct.list");
   }
   PointerType* PointerTy_struct_list = PointerType::getUnqual(StructTy_struct_list);
   if (StructTy_struct_list->isOpaque()) {
-    StructTy_struct_list->setBody(Type::getInt32Ty(C), PointerTy_struct_list, Type::getInt32Ty(C), NULL);
+    StructTy_struct_list->setBody(StructTy_Object, PointerTy_struct_list, Type::getInt32Ty(C), NULL);
   }
-
-  StructType *StructTy_tmp1 = StructType::create(C, "ololo");
-  PointerType* PointerTy_tmp1 = PointerType::getUnqual(StructTy_tmp1);
-  StructTy_tmp1->setBody(PointerTy_tmp1, NULL);
-
-  StructType *StructTy_tmp2 = StructType::get(Type::getInt32Ty(C), Type::getInt32Ty(C), NULL);
-  PointerType* PointerTy_tmp2 = PointerType::getUnqual(StructTy_tmp2);
-
 
 
   FunctionType *FT = FunctionType::get(Type::getDoubleTy(C), {}, false);
@@ -346,8 +354,6 @@ static void handleStruct() {
   Builder.SetInsertPoint(BB);
 
   AllocaInst* ptr_ptr1 = Builder.CreateAlloca(PointerTy_struct_list, 0, "ptr");
-  AllocaInst* ptr_ptr2 = Builder.CreateAlloca(PointerTy_tmp1, 0, "ptr2");
-
 
   Value *RetVal = ConstantFP::get(C, APFloat(7.0));
 
