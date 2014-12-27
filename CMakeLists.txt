@@ -17,7 +17,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 # Now build our tools
-set(SOURCE_FILES main.cpp)
+set(SOURCE_FILES lisp.cpp)
 add_executable(dynamite_llvm ${SOURCE_FILES})
 
 # Find the libraries that correspond to the LLVM components

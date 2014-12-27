@@ -238,7 +238,69 @@ unordered_map<string, unordered_map<string, int> > DeclState;
 
 
 Value *handleCall(string Op, vector<SyntaxTreeP> args);
+
 void handleIR(SyntaxTreeP tree);
+
+Value *handleValue(SyntaxTreeP tt) ;
+
+
+Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBranch) {
+    LLVMContext &C = getGlobalContext();
+
+    cout << "handleIfExpr: " << cond->toString() << endl;
+
+    Value *condVal0 = handleValue(cond);
+    if (condVal0 == 0)
+        return 0;
+
+    // Convert condition to a bool by comparing equal to 0.0.
+    Value *condVal = Builder.CreateICmpNE(condVal0, ConstantInt::get(C, APInt(32, 0)), "ifcond");
+
+    Function *TheFunction = Builder.GetInsertBlock()->getParent();
+
+    // Create blocks for the then and else cases.  Insert the 'then' block at the
+    // end of the function.
+    BasicBlock *ThenBB = BasicBlock::Create(getGlobalContext(), "then", TheFunction);
+    BasicBlock *ElseBB = BasicBlock::Create(getGlobalContext(), "else");
+    BasicBlock *MergeBB = BasicBlock::Create(getGlobalContext(), "ifcont");
+
+    Builder.CreateCondBr(condVal, ThenBB, ElseBB);
+
+    // Emit then value.
+    Builder.SetInsertPoint(ThenBB);
+
+    Value *thenVal = handleValue(thenBranch);
+    if (thenVal == NULL)
+        return NULL;
+
+    Builder.CreateBr(MergeBB);
+    // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
+    ThenBB = Builder.GetInsertBlock();
+
+    // Emit else block.
+    TheFunction->getBasicBlockList().push_back(ElseBB);
+    Builder.SetInsertPoint(ElseBB);
+
+    Value *elseVal = handleValue(elseBranch);
+    if (elseVal == NULL)
+        return NULL;
+
+    Builder.CreateBr(MergeBB);
+    // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
+    ElseBB = Builder.GetInsertBlock();
+
+    // Emit merge block.
+    TheFunction->getBasicBlockList().push_back(MergeBB);
+    Builder.SetInsertPoint(MergeBB);
+    PHINode *PN = Builder.CreatePHI(Type::getInt32Ty(C), 2, "iftmp");
+
+    PN->addIncoming(thenVal, ThenBB);
+    PN->addIncoming(elseVal, ElseBB);
+    return PN;
+}
+
+
+
 
 
 Value *handleValue(SyntaxTreeP tt) {
@@ -253,12 +315,18 @@ Value *handleValue(SyntaxTreeP tt) {
 
     if (typeid(*tt) == typeid(ANumber)) {
         shared_ptr<ANumber> num = dynamic_pointer_cast<ANumber>(tt);
-        return ConstantInt::get(C, APInt(32, num->value));
+        return ConstantInt::get(C, APInt(32, static_cast<long>(num->value)));
     }
 
     if (typeid(*tt) == typeid(ADouble)) {
         shared_ptr<ADouble> num = dynamic_pointer_cast<ADouble>(tt);
         return ConstantFP::get(C, APFloat(num->value));
+    }
+
+    if (typeid(*tt) == typeid(ABranch)
+        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
+        && tt->elemAt(0)->getString() == "if") {
+        return handleIfExpr(tt->elemAt(1), tt->elemAt(2), tt->elemAt(3));
     }
 
     if (typeid(*tt) == typeid(ABranch)) {
@@ -278,6 +346,8 @@ Value *handleValue(SyntaxTreeP tt) {
 
 
 Value *handleCall(string Op, vector<SyntaxTreeP> args) {
+    LLVMContext &C = getGlobalContext();
+
     cout << "handleCall " << Op << " : " << args.size() << endl;
 
     vector<Value *> calc_args;
@@ -309,10 +379,11 @@ Value *handleCall(string Op, vector<SyntaxTreeP> args) {
 //        return Builder.CreateFMul(calc_args[0], calc_args[1], "multmp");
     }
     if (Op == "<") {
-        // FIXME convert to int
-        Value *L = Builder.CreateFCmpULT(calc_args[0], calc_args[1], "cmptmp");
+        Value *RZ = Builder.CreateICmpULT(calc_args[0], calc_args[1], "cmptmp");
+        cout << "DBG 77" << endl;
+
         // Convert bool 0/1 to double 0.0 or 1.0
-        return Builder.CreateUIToFP(L, Type::getDoubleTy(getGlobalContext()), "booltmp");
+        return Builder.CreateZExt(RZ, Type::getInt32Ty(C), "booltmp");
     }
 
     // If it wasn't a builtin binary operator, it must be a user defined one. Emit
@@ -339,13 +410,40 @@ Function *handleDefun(SyntaxTreeP tree) {
         args.push_back(az->getString());
     }
 
-    FunctionType *FT = FunctionType::get(Type::getInt32Ty(C), {}, false);
+    std::vector<Type *> Doubles(args.size(),
+            Type::getInt32Ty(C));
+    FunctionType *FT =
+            FunctionType::get(Type::getInt32Ty(C), Doubles, false);
+
+
+//    FunctionType *FT = FunctionType::get(Type::getInt32Ty(C), {}, false);
     Function *theFunction = Function::Create(FT, Function::ExternalLinkage, name, TheModule);
 
     cout << "DBG 3" << endl;
     // Create a new basic block to start insertion into.
     BasicBlock *BB = BasicBlock::Create(C, "entry", theFunction);
     Builder.SetInsertPoint(BB);
+
+    // TODO make alloca for function args
+    Function::arg_iterator AI = theFunction->arg_begin();
+    for (unsigned Idx = 0; Idx != args.size(); ++Idx, ++AI) {
+        // Create an alloca for this variable.
+        auto varName = args[Idx];
+        cout << "arg: " << varName << endl;
+        IRBuilder<> TmpB(&theFunction->getEntryBlock(),
+                         theFunction->getEntryBlock().begin());
+        cout << "DBG 31" << endl;
+        AllocaInst *Alloca = TmpB.CreateAlloca(Type::getInt32Ty(C), 0, varName.c_str());
+        cout << "DBG 32 " << AI << endl;
+
+        // Store the initial value into the alloca.
+        Builder.CreateStore(AI, Alloca);
+        cout << "DBG 33" << endl;
+
+        // Add arguments to variable symbol table.
+        NamedValues[varName] = Alloca;
+        cout << "DBG 34" << endl;
+    }
 
     cout << "DBG 4" << endl;
 
@@ -374,7 +472,8 @@ Function *handleDefun(SyntaxTreeP tree) {
         verifyFunction(*theFunction);
 
         // Optimize the function.
-        TheFPM->run(*theFunction);
+
+//        TheFPM->run(*theFunction);
 
         return theFunction;
     } else {
@@ -484,6 +583,8 @@ void finishLLVM() {
     // Optimize the function.
 //  TheFPM->run(*repl);
 
+    fflush(stdout);
+
     TheModule->dump();
 
     Function *repl = TheModule->getFunction("main");
@@ -502,11 +603,15 @@ void finishLLVM() {
 
 }
 
-
+// TODO correct close local blocks, don't override variable
 
 int main() {
     string program;
-    program += "(defun main () (+ 11 12)) \n";
+    program += ""
+        "(defun fact (n) (if (< n 2)                \n"
+        "                    1                      \n"
+        "                    (* n (fact (- n 1))))) \n"
+        "(defun main () (fact 3))                   \n";
 
     cout << "program:" << endl;
     cout << program << endl;

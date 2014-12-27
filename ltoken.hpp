@@ -10,6 +10,8 @@ using namespace llvm;
 
 namespace Token {
 
+    static int parenBalance = 0;
+
     struct Token {
         enum TokenKind {
             TK_LPAREN,
@@ -157,6 +159,12 @@ namespace Token {
                         curr.clear();
                     }
                     if (x == '(' || x == ')') {
+                        if (x == '(') {
+                            parenBalance +=1;
+                        } else {
+                            parenBalance -=1;
+                        }
+                        assert(parenBalance >= 0);
                         res.push_back(make_ltoken(string() + x));
                     }
                     break;
