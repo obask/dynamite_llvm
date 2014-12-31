@@ -133,7 +133,7 @@ namespace Token {
         if (is_number(x)) {
             long t1 = stol(x);
             double t2 = stod(x);
-            if (t1 == t2) {
+            if (t1 == t2 && x.find(".") == string::npos) {
                 return make<IntLit>(t1);
             } else {
                 return make<DoubleLit>(t2);

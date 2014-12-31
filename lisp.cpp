@@ -1,9 +1,11 @@
+
+#include "default_types.cpp"
+
 #include <iostream>
 #include <vector>
 #include <unordered_map>
 #include <list>
 #include <unordered_set>
-#include <Python/Python.h>
 
 #include "llvm/Analysis/Passes.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -20,7 +22,6 @@
 
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/Scalar.h"
-
 
 #include "ltoken.hpp"
 #include "SyntaxTree.hpp"
@@ -239,9 +240,11 @@ unordered_map<string, unordered_map<string, int> > DeclState;
 
 Value *handleCall(string Op, vector<SyntaxTreeP> args);
 
+Value *internalCall(string Op, vector<Value*> calc_args);
+
 void handleIR(SyntaxTreeP tree);
 
-Value *handleValue(SyntaxTreeP tt) ;
+Value *handleValue(SyntaxTreeP tt);
 
 
 Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBranch) {
@@ -301,11 +304,22 @@ Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBr
 
 
 
-
-
 Value *handleValue(SyntaxTreeP tt) {
     LLVMContext &C = getGlobalContext();
     cout << "handleValue: " << tt->toString() << endl;
+
+    if (typeid(*tt) == typeid(ASymbol)
+            && tt->getString() == "null") {
+
+        cout << "dbg null 1 " << endl;
+
+        PointerType* PointerTy_struct_Object = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
+        Value* res = ConstantPointerNull::get(PointerTy_struct_Object);
+
+        cout << "dbg null 2 " << endl;
+
+        return res;
+    }
 
     if (typeid(*tt) == typeid(ASymbol)) {
         string var = tt->getString();
@@ -314,13 +328,18 @@ Value *handleValue(SyntaxTreeP tt) {
     }
 
     if (typeid(*tt) == typeid(ANumber)) {
+        cout << "handleNumber" << endl;
         shared_ptr<ANumber> num = dynamic_pointer_cast<ANumber>(tt);
-        return ConstantInt::get(C, APInt(32, static_cast<long>(num->value)));
+        return ConstantInt::get(C, APInt(32, (uint64_t) num->value));
     }
 
     if (typeid(*tt) == typeid(ADouble)) {
+        cout << "handleDouble" << endl;
         shared_ptr<ADouble> num = dynamic_pointer_cast<ADouble>(tt);
-        return ConstantFP::get(C, APFloat(num->value));
+        vector<Value*> args;
+        args.push_back(ConstantFP::get(C, APFloat(num->value)));
+        TheModule->dump();
+        return internalCall("createDouble", args);
     }
 
     if (typeid(*tt) == typeid(ABranch)
@@ -345,25 +364,251 @@ Value *handleValue(SyntaxTreeP tt) {
 }
 
 
-Value *handleCall(string Op, vector<SyntaxTreeP> args) {
+void handleConstructor(string structName0, const vector<string> &fields) {
     LLVMContext &C = getGlobalContext();
+    cout << "handleConstructor: " << structName0 << endl;
+    Module *mod = TheModule;
 
-    cout << "handleCall " << Op << " : " << args.size() << endl;
+    string structName = "struct." + structName0;
 
-    vector<Value *> calc_args;
-    for (auto arg: args) {
-        if (arg == NULL) {
-            cout << "NULL" << endl;
-            throw std::logic_error("null error");
-        }
-        Value *RZ = handleValue(arg);
-        if (RZ) {
-            calc_args.push_back(RZ);
-        } else {
-            throw std::logic_error("Value *handleCall(string Op, vector<SyntaxTreeP> args)");
-        }
+    StructType* StructTy_struct_Object = mod->getTypeByName("struct.Object");
+    PointerType* PointerTy_struct_Object = PointerType::get(StructTy_struct_Object, 0);
+
+    // Type Definitions
+    StructType *StructTy_struct_Current = mod->getTypeByName(structName);
+
+    PointerType* PointerTy_struct_Current = PointerType::get(StructTy_struct_Current, 0);
+
+    PointerType* PointerTy_2 = PointerType::get(Type::getDoubleTy(C), 0);
+
+    PointerType* PointerTy_4 = PointerType::get(IntegerType::get(C, 8), 0);
+
+    std::vector<Type*>FuncTy_6_args;
+    FuncTy_6_args.push_back(IntegerType::get(C, 64));
+    FunctionType* FuncTy_6 = FunctionType::get(
+            /*Result=*/PointerTy_4,
+            /*Params=*/FuncTy_6_args,
+            /*isVarArg=*/false);
+
+    PointerType* PointerTy_5 = PointerType::get(FuncTy_6, 0);
+
+    PointerType* PointerTy_7 = PointerType::get(StructTy_struct_Object, 0);
+
+    PointerType* PointerTy_8 = PointerType::get(IntegerType::get(C, 32), 0);
+
+    std::vector<Type*>FuncTy_9_args;
+    FunctionType* FuncTy_9 = FunctionType::get(
+            /*Result=*/IntegerType::get(mod->getContext(), 32),
+            /*Params=*/FuncTy_9_args,
+            /*isVarArg=*/false);
+
+
+    cout << "dbg 2" << endl;
+
+    std::vector<Type*>FuncTy_1_args;
+    for (auto &arg : fields) {
+        FuncTy_1_args.push_back(PointerTy_struct_Object);
     }
-    cout << "Args calculated" << endl;
+    FunctionType* FuncTy_1 = FunctionType::get(
+            /*Result=*/PointerTy_struct_Object,
+            /*Params=*/FuncTy_1_args,
+            /*isVarArg=*/false);
+
+    // Function Declarations
+
+    Function* func_createCurrent = mod->getFunction("create" + structName0);
+    if (!func_createCurrent) {
+        func_createCurrent = Function::Create(
+                /*Type=*/ FuncTy_1,
+                /*Linkage=*/ GlobalValue::ExternalLinkage,
+                /*Name=*/ "create" + structName0, mod);
+    }
+
+    Function* func_malloc = mod->getFunction("malloc");
+    if (!func_malloc) {
+        func_malloc = Function::Create(
+                /*Type=*/FuncTy_6,
+                /*Linkage=*/GlobalValue::ExternalLinkage,
+                /*Name=*/"malloc", mod); // (external, no body)
+        func_malloc->setCallingConv(CallingConv::C);
+    }
+
+    // Constant Definitions
+    ConstantInt* KindDouble = ConstantInt::get(C, APInt(32, 7));
+
+    // Function Definitions
+
+    cout << "dbg 3" << endl;
+
+    // Function: createDouble (func_createDouble)
+
+    // If F took a different number of args, reject.
+    if (func_createCurrent->arg_size() != fields.size()) {
+        throw std::logic_error("redefinition of function with different # args");
+    }
+
+    PointerType* ptr_ptr_custom_ty = PointerType::getUnqual(PointerTy_struct_Current);
+
+
+    BasicBlock* label_entry = BasicBlock::Create(C, "entry", func_createCurrent,0);
+
+    Function::arg_iterator args_it = func_createCurrent->arg_begin();
+
+    vector<LoadInst*> input_args;
+    for (auto &field : fields) {
+
+        args_it->setName(field);
+
+        // Block entry (label_entry)
+        AllocaInst* ptr_xx_addr = new AllocaInst(PointerTy_struct_Object, "addr_of_" + field, label_entry);
+        ptr_xx_addr->setAlignment(8);
+
+        StoreInst* void_15 = new StoreInst(args_it, ptr_xx_addr, false, label_entry);
+        void_15->setAlignment(8);
+
+        LoadInst* res_arg = new LoadInst(ptr_xx_addr, field + "_on_stack", false, label_entry);
+
+        input_args.push_back(res_arg);
+
+        args_it++;
+    }
+
+
+    // fixme bad size of allocation
+    CallInst* ptr_call = CallInst::Create(func_malloc, ConstantExpr::getSizeOf(StructTy_struct_Current), "call", label_entry);
+
+    cout << "dbg 4" << endl;
+
+    CastInst* ptr_malloc = new BitCastInst(ptr_call, PointerTy_struct_Current, "ptr_malloc", label_entry);
+
+    cout << "dbg 4.0" << endl;
+
+    AllocaInst* ptr_curr = new AllocaInst(PointerTy_struct_Current, "ptr", label_entry);
+    ptr_curr->setAlignment(8);
+
+    cout << "dbg 4.1" << endl;
+
+    StoreInst* void_17 = new StoreInst(ptr_malloc, ptr_curr, false, label_entry);
+    void_17->setAlignment(8);
+
+    cout << "dbg 4.2" << endl;
+
+
+    LoadInst* curr = new LoadInst(ptr_curr, "curr", false, label_entry);
+    curr->setAlignment(8);
+
+    cout << "dbg 4.3" << endl;
+
+    std::vector<Value*> ptr_parent_indices;
+    ptr_parent_indices.push_back(ConstantInt::get(C, APInt(32, 0)));
+    ptr_parent_indices.push_back(ConstantInt::get(C, APInt(32, 0)));
+
+    cout << "dbg 5" << endl;
+
+    Instruction* ptr_parent = GetElementPtrInst::Create(curr, ptr_parent_indices, "parent", label_entry);
+
+    cout << "dbg 5.1" << endl;
+
+    std::vector<Value*> ptr_kind_indices;
+    ptr_kind_indices.push_back(ConstantInt::get(C, APInt(32, 0)));
+    ptr_kind_indices.push_back(ConstantInt::get(C, APInt(32, 0)));
+    Instruction* ptr_kind = GetElementPtrInst::Create(ptr_parent, ptr_kind_indices, "kind", label_entry);
+
+    cout << "dbg 5.2" << endl;
+
+
+    StoreInst* void_19 = new StoreInst(KindDouble, ptr_kind, false, label_entry);
+    void_19->setAlignment(4);
+
+
+
+//    curr
+    cout << "dbg 6" << endl;
+
+    for (int i=0; i < fields.size(); ++i) {
+        cout << "dbg 6.1" << fields[i] << endl;
+
+        std::vector<Value*> ptr_val_indices;
+        ptr_val_indices.push_back(ConstantInt::get(C, APInt(32, 0)));
+        ptr_val_indices.push_back(ConstantInt::get(C, APInt(32, 1)));
+
+        Instruction* ptr_val = GetElementPtrInst::Create(curr, ptr_val_indices, "ptr__" + fields[i], label_entry);
+
+        cout << "dbg 6.2" << fields[i] << endl;
+
+        StoreInst* void_22 = new StoreInst(input_args[i], ptr_val, false, label_entry);
+        void_22->setAlignment(8);
+
+    }
+
+    // RET
+
+    cout << "dbg 7" << endl;
+
+//    LoadInst* ptr_23 = new LoadInst(curr, "", false, label_entry);
+//    ptr_23->setAlignment(8);
+
+
+    curr->dump();
+    curr->getType()->dump();
+
+    CastInst* ptr_res = new BitCastInst(curr, PointerTy_struct_Object, "", label_entry);
+
+    ReturnInst::Create(C, ptr_res, label_entry);
+
+}
+
+
+Value *handleStruct(string structName0, const vector<string> &fields) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleStruct: " << structName0 << endl;
+
+    string structName = "struct." + structName0;
+    Module *mod = TheModule;
+
+    StructType* StructTy_struct_Object = mod->getTypeByName("struct.Object");
+    PointerType* PointerTy_struct_Object = PointerType::get(StructTy_struct_Object, 0);
+
+    // Type Definitions
+    StructType *StructTy_struct_Current = mod->getTypeByName(structName);
+    if (StructTy_struct_Current) {
+        assert("redifinition of struct");
+        return NULL;
+    } else {
+        StructTy_struct_Current = StructType::create(C, structName);
+    }
+    std::vector<Type*> StructTy_struct_Current_fields;
+    StructTy_struct_Current_fields.push_back(StructTy_struct_Object);
+    for (auto &field : fields) {
+        StructTy_struct_Current_fields.push_back(PointerTy_struct_Object);
+    }
+
+    cout << "dbg 1" << endl;
+
+    if (StructTy_struct_Current->isOpaque()) {
+        StructTy_struct_Current->setBody(StructTy_struct_Current_fields, /*isPacked=*/false);
+    } else {
+        throw std::logic_error("if (StructTy_struct_Current->isOpaque()) {");
+    }
+
+    ConstantInt* const_int32_13 = ConstantInt::get(C, APInt(32, 0));
+    ConstantFP* const_double_14 = ConstantFP::get(C, APFloat(1.200000e+01));
+
+    handleConstructor(structName0, fields);
+
+    return NULL;
+}
+
+Value *internalCall(string Op, vector<Value*> calc_args) {
+    LLVMContext &C = getGlobalContext();
+    cout << "internalCall" << calc_args.size() << " " << Op << endl;
+
+    fprintf(stderr, "ARGS:\n");
+    for (int i=0; i< calc_args.size(); ++i) {
+        calc_args[i]->getType()->dump();
+        calc_args[i]->dump();
+    }
+    fprintf(stderr, "----\n");
 
     if (Op == "+") {
 //        return Builder.CreateFAdd(calc_args[0], calc_args[1], "addtmp");
@@ -396,9 +641,37 @@ Value *handleCall(string Op, vector<SyntaxTreeP> args) {
 }
 
 
+Value *handleCall(string Op, vector<SyntaxTreeP> args) {
+    LLVMContext &C = getGlobalContext();
+
+    cout << "handleCall " << Op << " : " << args.size() << endl;
+
+    vector<Value *> calc_args;
+    for (auto arg: args) {
+        if (arg == NULL) {
+            cout << "NULL" << endl;
+            throw std::logic_error("null error");
+        }
+        Value *RZ = handleValue(arg);
+        if (RZ) {
+            calc_args.push_back(RZ);
+        } else {
+            throw std::logic_error("Value *handleCall(string Op, vector<SyntaxTreeP> args)");
+        }
+    }
+    cout << "Args calculated" << endl;
+
+    return internalCall(Op, calc_args);
+}
+
+
+
+
 Function *handleDefun(SyntaxTreeP tree) {
     LLVMContext &C = getGlobalContext();
     cout << "handleDefun" << endl;
+
+    PointerType* PointerTy_struct_Object = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
 
     string name = tree->elemAt(1)->getString();
     vector<SyntaxTreeP> proto = tree->elemAt(2)->getVector();
@@ -410,11 +683,8 @@ Function *handleDefun(SyntaxTreeP tree) {
         args.push_back(az->getString());
     }
 
-    std::vector<Type *> Doubles(args.size(),
-            Type::getInt32Ty(C));
-    FunctionType *FT =
-            FunctionType::get(Type::getInt32Ty(C), Doubles, false);
-
+    std::vector<Type *> argsTypes(args.size(), PointerTy_struct_Object);
+    FunctionType *FT = FunctionType::get(PointerTy_struct_Object, argsTypes, false);
 
 //    FunctionType *FT = FunctionType::get(Type::getInt32Ty(C), {}, false);
     Function *theFunction = Function::Create(FT, Function::ExternalLinkage, name, TheModule);
@@ -459,7 +729,6 @@ Function *handleDefun(SyntaxTreeP tree) {
         cout << "-> " << tmp->toString() << endl;
     }
 
-
     for (auto xx: body) {
         RetVal = handleValue(xx);
     }
@@ -479,29 +748,6 @@ Function *handleDefun(SyntaxTreeP tree) {
     } else {
         return NULL;
     }
-}
-
-
-void handleObject(SyntaxTreeP tree) {
-    LLVMContext &C = getGlobalContext();
-    cout << "handleObject" << endl;
-
-    string name = tree->elemAt(1)->getString();
-    vector<string> args;
-    int sz = (int)tree->getVector().size();
-    for (int i=2; i < sz; ++i) {
-        args.push_back(dynamic_pointer_cast<ASymbol>(tree->elemAt(i))->value);
-    }
-
-    StructType *StructTy_struct_list = TheModule->getTypeByName("struct.list");
-    if (!StructTy_struct_list) {
-        StructTy_struct_list = StructType::create(C, "struct.list");
-    }
-    PointerType* PointerTy_struct_list = PointerType::getUnqual(StructTy_struct_list);
-    if (StructTy_struct_list->isOpaque()) {
-        StructTy_struct_list->setBody(Type::getInt32Ty(C), PointerTy_struct_list, Type::getInt32Ty(C), NULL);
-    }
-    return;
 }
 
 
@@ -531,7 +777,12 @@ void handleIR(SyntaxTreeP tree) {
     shared_ptr<ASymbol> cmd = dynamic_pointer_cast<ASymbol>(tmp2);
 
     if (cmd->value == "object") {
-        return handleObject(tree);
+        string name = tree->elemAt(1)->getString();
+        vector<string> args;
+        args.push_back(tree->elemAt(2)->getString());
+        args.push_back(tree->elemAt(3)->getString());
+        handleStruct(name, args);
+        return;
     }
 
     if (cmd->value == "defun") {
@@ -598,8 +849,8 @@ void finishLLVM() {
     void *FPtr = TheExecutionEngine->getPointerToFunction(repl);
     // Cast it to the right type (takes no arguments, returns a double) so we
     // can call it as a native function.
-    int (*FP)() = (int (*)())(intptr_t)FPtr;
-    fprintf(stderr, "Evaluated to %d\n", FP());
+    void* (*FP)() = (void* (*)())(intptr_t)FPtr;
+    fprintf(stderr, "Evaluated to %ld\n", (long)FP());
 
 }
 
@@ -608,10 +859,12 @@ void finishLLVM() {
 int main() {
     string program;
     program += ""
-        "(defun fact (n) (if (< n 2)                \n"
-        "                    1                      \n"
-        "                    (* n (fact (- n 1))))) \n"
-        "(defun main () (fact 3))                   \n";
+//        "(defun fact (n) (if (< n 2)                \n"
+//        "                    1                      \n"
+//        "                    (* n (fact (- n 1))))) \n"
+        "(object List field1 field2)          \n"
+        "(defun main () (createList 3.0 null) \n"
+        "               null)                 \n";
 
     cout << "program:" << endl;
     cout << program << endl;
@@ -679,6 +932,9 @@ int main() {
     TheFPM = &OurFPM;
 
     cout << "Codegen: " << ast.size() << endl;
+
+    initializeDefaultTypes(TheModule);
+
     for (auto cmd: ast) {
         handleIR(cmd);
 //        auto res0 = createIR(cmd);
