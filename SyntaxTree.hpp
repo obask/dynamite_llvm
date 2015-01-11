@@ -30,7 +30,9 @@ public:
     SyntaxTreeKind getSubclassID() const { return SubclassID; }
     SyntaxTree(SyntaxTreeKind K) : SubclassID(K) {}
 
-    virtual vector<shared_ptr<SyntaxTree> > getVector() {return {}; }
+    virtual vector<shared_ptr<SyntaxTree> > &getVector() {
+        throw std::logic_error("virtual vector<shared_ptr<SyntaxTree> > &getVector()");
+    }
     virtual shared_ptr<SyntaxTree> elemAt(int i) { return NULL; }
     virtual string getString() { return ""; }
     virtual string toString() = 0;
@@ -58,7 +60,7 @@ public:
         return value;
     }
 
-    virtual vector<SyntaxTreeP> getVector() override {
+    virtual vector<SyntaxTreeP> &getVector() override {
         return value;
     }
 

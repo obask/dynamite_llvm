@@ -1,0 +1,49 @@
+(TypeDef StringX (ss )
+    (extends )
+
+    (defun getToken (abc)
+        ??? )
+
+    (defun dump ()
+        ??? )
+
+    (defun getStatus ()
+        ??? )
+
+)
+
+(defun main ()
+    (SelectApply getToken "qqqqqqqq1" null)
+    (SelectApply dump "qqqqqqqq1"))
+
+
+(ModuleDef NilX ()
+    (extends ListX )
+
+    (defun isEmpty ()
+        "true" )
+
+    (defun head ()
+        Throw )
+
+    (defun tail ()
+        Throw )
+
+)
+
+(TypeDef :=: (head tl )
+    (extends ListX )
+
+    (defun tail ()
+        tl )
+
+    (defun isEmpty ()
+        "false" )
+
+)
+
+(defun main (args )
+    (begin
+        (ValDef xx (Apply :=: (Apply :=: NilX 2 ) 1 ) )
+        (Apply  println xx ) ) )
+

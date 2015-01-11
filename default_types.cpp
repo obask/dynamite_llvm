@@ -1,8 +1,12 @@
 #ifndef DEFAULT_TYPES
 #define DEFAULT_TYPES
 
+#include "globals.cpp"
+
 #include <vector>
 #include <iostream>
+#include <cstring>
+#include <unordered_map>
 
 #include "llvm/Analysis/Passes.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -21,13 +25,11 @@
 
 #include "extern_lib.cpp"
 
+#include "SyntaxTree.hpp"
 
 using namespace std;
 
 using namespace llvm;
-
-static Module *TheModule;
-static IRBuilder<> Builder(getGlobalContext());
 
 
 void initializeObject(Module *mod) {
@@ -193,9 +195,16 @@ void initializeDefaultTypes(Module *mod) {
 void handleConstructor(std::string structName0, const std::vector<std::string> &fields) {
     LLVMContext &C = getGlobalContext();
     cout << "handleConstructor: " << structName0 << endl;
+    for (auto it : fields) {
+        cout << it << " ";
+    }
+    cout << endl;
+
     Module *mod = TheModule;
 
     string structName = "struct." + structName0;
+
+    cout << "dbg 0.1" << endl;
 
     StructType* StructTy_struct_Object = mod->getTypeByName("struct.Object");
     PointerType* PointerTy_struct_Object = PointerType::get(StructTy_struct_Object, 0);
@@ -203,11 +212,19 @@ void handleConstructor(std::string structName0, const std::vector<std::string> &
     // Type Definitions
     StructType *StructTy_struct_Current = mod->getTypeByName(structName);
 
+    cout << "dbg 0.2" << endl;
+
     PointerType* PointerTy_struct_Current = PointerType::get(StructTy_struct_Current, 0);
+
+    cout << "dbg 0.3" << endl;
 
     PointerType* PointerTy_2 = PointerType::get(Type::getDoubleTy(C), 0);
 
+    cout << "dbg 0.4" << endl;
+
     PointerType* PointerTy_4 = PointerType::get(IntegerType::get(C, 8), 0);
+
+    cout << "dbg 0.5" << endl;
 
     std::vector<Type*>FuncTy_6_args;
     FuncTy_6_args.push_back(IntegerType::get(C, 64));
@@ -219,6 +236,8 @@ void handleConstructor(std::string structName0, const std::vector<std::string> &
     PointerType* PointerTy_5 = PointerType::get(FuncTy_6, 0);
 
     PointerType* PointerTy_7 = PointerType::get(StructTy_struct_Object, 0);
+
+    cout << "dbg 0.1" << endl;
 
     PointerType* PointerTy_8 = PointerType::get(IntegerType::get(C, 32), 0);
 
@@ -382,6 +401,8 @@ void handleConstructor(std::string structName0, const std::vector<std::string> &
 
     ReturnInst::Create(C, ptr_res, label_entry);
 
+    cout << "OK handleConstructor " << structName0 << endl;
+
 }
 
 
@@ -483,7 +504,62 @@ Constant *internalString(string varRaw) {
 }
 
 
-void handleTypeDef(StringRef name, SmallVectorImpl<string> &fields, SmallVectorImpl<string> &parents) {
+std::string createFFIName(std::string clazz, std::string method) {
+    return clazz + "_" + method;
+}
+
+
+void setNewClassMethod(std::string className, std::string methodName, Function* theFunction) {
+    cout << "setNewClassMethod " << className << "::" << methodName << endl;
+
+    if (!ClassMethods.count(className)) {
+        ClassMethods[className] = unordered_map<std::string, Function*>();
+    }
+
+    ClassMethods[className][methodName] = theFunction;
+
+}
+
+
+Function *handleNewFFI(SyntaxTreeP tree, std::string className) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleNewFFI" << endl;
+
+    PointerType* PointerTy_Object = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
+
+    string methodName = tree->elemAt(1)->getString();
+
+    assert("???" == tree->elemAt(3)->getString());
+
+    vector<SyntaxTreeP> proto = tree->elemAt(2)->getVector();
+    vector<string> args;
+
+    cout << "DBG 2" << endl;
+
+    for (SyntaxTreeP az: proto) {
+        args.push_back(az->getString());
+    }
+
+    std::vector<Type *> argsTypes(args.size(), PointerTy_Object);
+    FunctionType *FT = FunctionType::get(PointerTy_Object, argsTypes, false);
+
+//    FunctionType *FT = FunctionType::get(Type::getInt32Ty(C), {}, false);
+    Function *theFunction = Function::Create(FT, Function::ExternalLinkage, createFFIName(className, methodName), TheModule);
+
+    setNewClassMethod(className, methodName, theFunction);
+
+    return theFunction;
+//    for (auto xx: body) {
+//        RetVal = handleValue(xx);
+//    }
+
+}
+
+
+void handleTypeDef(StringRef rawClassName,
+        SmallVectorImpl<string> &fields,
+        SmallVectorImpl<string> &parents,
+        std::vector<SyntaxTreeP> body) {
     LLVMContext &C = getGlobalContext();
     Module *mod = TheModule;
 
@@ -492,12 +568,49 @@ void handleTypeDef(StringRef name, SmallVectorImpl<string> &fields, SmallVectorI
     BasicBlock *BB = &theFunction->getEntryBlock();
     Builder.SetInsertPoint(BB);
 
-    Constant *className = internalString(name);
+    Constant *className = internalString(rawClassName);
     Constant *classFields = internalString(stringJoin(fields));
     Constant *classParents = internalString(stringJoin(parents));
 
     Function* fun = TheModule->getFunction("TypeDef");
     Builder.CreateCall3(fun, className, classFields, classParents);
+
+    // костыль для копирования векторов
+    vector<string> vec_tmp;
+    for (auto xx : fields) {
+        vec_tmp.push_back(xx);
+    }
+    if (!fields.empty()) {
+        handleStruct(rawClassName, vec_tmp);
+    }
+    for (auto defMethod : body) {
+        SyntaxTreeP functionBody = defMethod->elemAt(3);
+
+        if (typeid(*functionBody) == typeid(ASymbol)
+                && functionBody->getString() == "EmptyTree") {
+            ;;;
+        } else if (typeid(*functionBody) == typeid(ASymbol)
+                && functionBody->getString() == "???") {
+            handleNewFFI(defMethod, rawClassName);
+        } else {
+
+            vector<SyntaxTreeP> &functionArgs = defMethod->elemAt(2)->getVector();
+
+            std::vector<SyntaxTreeP> functionArgsNew;
+            functionArgsNew.push_back(make_shared<ASymbol>("this"));
+            for (auto xx : functionArgs) {
+                functionArgsNew.push_back(xx);
+            }
+
+//            shared_ptr<vector<SyntaxTreeP>> tmp = dynamic_pointer_cast<vector<SyntaxTreeP>>(defMethod);
+//            tmp[2] = make_shared<ABranch>(new vector(functionArgsNew));
+
+            functionArgs.assign(functionArgsNew.begin(), functionArgsNew.end());
+
+            Function *ff = handleDefun(defMethod);
+        }
+    }
+
 }
 
 

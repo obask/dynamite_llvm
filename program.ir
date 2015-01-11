@@ -1,0 +1,34 @@
+
+(TypeDef :=: (head tl )
+    (extends ListX )
+
+    (defun tail ()
+        (Select this tl) )
+
+    (defun isEmpty ()
+        "false" )
+
+)
+
+
+(TypeDef ListX ()
+    (extends ) 
+    
+    (defun isEmpty ()
+        EmptyTree )
+    
+    (defun head ()
+        EmptyTree )
+    
+    (defun tail ()
+        EmptyTree )
+    
+    (defun :=: (x )
+        (Apply :=: x this ) )
+    
+)
+
+
+(defun main ()
+    null)
+
