@@ -294,7 +294,7 @@ int main() {
 
     string program;
 
-    ifstream myfile("/Users/oleg/ClionProjects/dynamite_llvm/program.ir", ios::binary);
+    ifstream myfile("/Users/obaskakov/ClionProjects/dynamite_llvm/program.ir", ios::binary);
 
 
     std::string line;
@@ -303,13 +303,13 @@ int main() {
     }
     myfile.close();
 
-    cout << "program:" << endl;
+    cout << "Program:" << endl;
     cout << program << endl;
 
     list<Token::TokenP> tokens = Token::tokenize(program);
 
-    cout << "tokens:" << endl;
-    cout << to_string(tokens) << endl;
+//    cout << "tokens:" << endl;
+//    cout << to_string(tokens) << endl;
 
     auto ast = makeFullAST(tokens);
 

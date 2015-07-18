@@ -580,15 +580,15 @@ void handleTypeDef(StringRef rawClassName,
     for (auto xx : fields) {
         vec_tmp.push_back(xx);
     }
-    if (!fields.empty()) {
-        handleStruct(rawClassName, vec_tmp);
-    }
+//    if (!fields.empty()) {
+    handleStruct(rawClassName, vec_tmp);
+//    }
     for (auto defMethod : body) {
         SyntaxTreeP functionBody = defMethod->elemAt(3);
 
         if (typeid(*functionBody) == typeid(ASymbol)
                 && functionBody->getString() == "EmptyTree") {
-            ;;;
+            ;
         } else if (typeid(*functionBody) == typeid(ASymbol)
                 && functionBody->getString() == "???") {
             handleNewFFI(defMethod, rawClassName);

@@ -1,34 +1,14 @@
 
-(TypeDef :=: (head tl )
-    (extends ListX )
 
-    (defun tail ()
-        (Select this tl) )
+(Signature LLVMGetGlobalContext  () -> LLVMOpaqueContext)
 
-    (defun isEmpty ()
-        "false" )
+(Signature LLVMModuleCreateWithName  (ConstCharPtr ) -> LLVMOpaqueModule)
 
-)
+(Signature LLVMSetTarget  (LLVMOpaqueModule ConstCharPtr ) -> EmptyTree)
+
+(Signature LLVMArrayType  (LLVMTypeRef Unsigned ) -> LLVMTypeRef)
 
 
-(TypeDef ListX ()
-    (extends ) 
-    
-    (defun isEmpty ()
-        EmptyTree )
-    
-    (defun head ()
-        EmptyTree )
-    
-    (defun tail ()
-        EmptyTree )
-    
-    (defun :=: (x )
-        (Apply :=: x this ) )
-    
-)
 
-
-(defun main ()
-    null)
-
+(defun main (args )
+"dsad")

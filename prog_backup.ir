@@ -47,3 +47,30 @@
         (ValDef xx (Apply :=: (Apply :=: NilX 2 ) 1 ) )
         (Apply  println xx ) ) )
 
+
+
+
+
+
+
+
+
+(Signature LLVMGetGlobalContext  () -> LLVMContextRef)
+(defun LLVMGetGlobalContext () => ??? )
+
+(Signature LLVMModuleCreateWithName  (ConstCharPtr ) -> LLVMModuleRef)
+(defun LLVMModuleCreateWithName (moduleID ) => ??? )
+
+(Signature LLVMSetTarget  (LLVMModuleRef ConstCharPtr ) -> EmptyTree)
+(defun LLVMSetTarget (mod triple ) => ??? )
+
+(Signature main  () -> Unit)
+
+
+(defun main () =>
+    (begin
+    (println "hello dotty!" )
+    (ValDef ctx (LLVMGetGlobalContext ) )
+    (ValDef mod (LLVMModuleCreateWithName "debug.ll" ) )
+    (LLVMSetTarget mod "x86_64-apple-macosx10.10.0" ) ) )
+

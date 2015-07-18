@@ -328,6 +328,56 @@ Value *handleSelectApply(string Op, vector<SyntaxTreeP> args) {
 }
 
 
+Type *getPtrToOpaqueTypes(string typeName) {
+    LLVMContext &C = getGlobalContext();
+    if (typeName == "EmptyTree") {
+        return Type::getVoidTy(C);
+    }
+    if (typeName == "ConstCharPtr") {
+        return PointerType::getUnqual(IntegerType::getInt8Ty(C));
+    }
+    if (typeName == "Unsigned") {
+        return IntegerType::getInt32Ty(C);
+    }
+    StructType *pType = TheModule->getTypeByName("struct." + typeName);
+    if (!pType) {
+        pType = StructType::create(TheModule->getContext(), "struct." + typeName);
+    }
+    assert(pType);
+    return PointerType::getUnqual(pType);
+}
+
+
+Function *handleSignature(const string &name, const vector<string> &fields, const string &returnType) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleSignature " << name << " -> " << returnType << endl;
+
+    Type *PointerTy_Object = getPtrToOpaqueTypes(returnType);
+
+    vector<string> args;
+
+    cout << "DBG 2" << endl;
+
+    std::vector<Type *> argsTypes;
+    for (const auto &argType: fields) {
+        auto tmp = getPtrToOpaqueTypes(argType);
+        argsTypes.push_back(tmp);
+    }
+
+    FunctionType *FT = FunctionType::get(PointerTy_Object, argsTypes, false);
+    assert(FT);
+
+//    FunctionType *FT = FunctionType::get(Type::getInt32Ty(C), {}, false);
+    Function *theFunction = Function::Create(FT, Function::ExternalLinkage, name, TheModule);
+    assert(theFunction);
+
+    cerr << "-- theFunction" << endl;
+    theFunction->dump();
+    cerr << endl;
+    cerr.flush();
+
+    return theFunction;
+}
 
 Function *handleDefun(SyntaxTreeP tree) {
     LLVMContext &C = getGlobalContext();
@@ -453,6 +503,74 @@ void parseTypeDef(SyntaxTreeP tree) {
 }
 
 
+void parseSignature(SyntaxTreeP tree) {
+    cout << "parseSignature " << endl;
+    string name = tree->elemAt(1)->getString();
+    auto rawFields = tree->elemAt(2)->getVector();
+    vector<string> fields;
+    for (auto it : rawFields) {
+        fields.push_back(it->getString());
+    }
+    // Check bad function signature
+    assert(tree->elemAt(3)->getString() == "->");
+    string resultType = tree->elemAt(4)->getString();
+    handleSignature(name, fields, resultType);
+}
+
+//; Function Attrs: nounwind ssp uwtable
+//        define void @ZZZZZ(%struct.ObjectX* %AAAAA) #0 {
+//%1 = alloca %struct.ObjectX*, align 8
+//store %struct.ObjectX* %AAAAA, %struct.ObjectX** %1, align 8
+//%2 = load %struct.ObjectX** %1, align 8
+//%3 = bitcast %struct.ObjectX* %2 to i8*
+//%4 = call %struct.LLVMOpaqueModule* @LLVMModuleCreateWithName(i8* %3)
+//ret void
+//}
+
+void genFunCallFFI() {
+
+    func_ZZZZZ = TheModule->getFunction(ZZZZZ);
+
+    Function::arg_iterator args = func_ZZZZZ->arg_begin();
+    Value* ptr_AAAAA = args++;
+    ptr_AAAAA->setName("AAAAA");
+
+    BasicBlock* label_23 = BasicBlock::Create(mod->getContext(), "",func_ZZZZZ,0);
+
+    // Block  (label_23)
+    AllocaInst* ptr_24 = new AllocaInst(PointerTy_5, "", label_23);
+    ptr_24->setAlignment(8);
+    StoreInst* void_25 = new StoreInst(ptr_AAAAA, ptr_24, false, label_23);
+    void_25->setAlignment(8);
+    LoadInst* ptr_26 = new LoadInst(ptr_24, "", false, label_23);
+    ptr_26->setAlignment(8);
+    CastInst* ptr_27 = new BitCastInst(ptr_26, PointerTy_7, "", label_23);
+    CallInst* ptr_28 = CallInst::Create(func_LLVMModuleCreateWithName, ptr_27, "", label_23);
+    ptr_28->setCallingConv(CallingConv::C);
+    ptr_28->setTailCall(false);
+    AttributeSet ptr_28_PAL;
+    ptr_28->setAttributes(ptr_28_PAL);
+
+    ReturnInst::Create(mod->getContext(), label_23);
+
+}
+
+
+void handleTypeFFI(string name) {
+    cout << "handleTypeFFI " << name << endl;
+
+    StructType *StructTy_struct_LLVMOpaqueModule = TheModule->getTypeByName(("struct." + name).c_str());
+    if (!StructTy_struct_LLVMOpaqueModule) {
+        StructTy_struct_LLVMOpaqueModule = StructType::create(TheModule->getContext(), ("struct." + name).c_str());
+    }
+//    std::vector<Type*>StructTy_struct_LLVMOpaqueModule_fields;
+//    if (StructTy_struct_LLVMOpaqueModule->isOpaque()) {
+//        StructTy_struct_LLVMOpaqueModule->setBody(StructTy_struct_LLVMOpaqueModule_fields, /*isPacked=*/false);
+//    }
+    // declare as opaque type
+}
+
+
 void handleIR(SyntaxTreeP tree) {
     LLVMContext &C = getGlobalContext();
     cout << "handleIR " << tree->toString() << endl;
@@ -461,7 +579,19 @@ void handleIR(SyntaxTreeP tree) {
     shared_ptr<ASymbol> cmd = dynamic_pointer_cast<ASymbol>(tmp2);
 
     if (cmd->value == "TypeDef") {
-        return parseTypeDef(tree);
+        parseTypeDef(tree);
+        return;
+    }
+
+    if (cmd->value == "Signature") {
+        parseSignature(tree);
+        return;
+    }
+
+
+    if (cmd->value == "TypeFFI") {
+        handleTypeFFI(tree->elemAt(1)->getString());
+        return;
     }
 
 
