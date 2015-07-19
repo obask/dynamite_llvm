@@ -11,4 +11,4 @@
 
 
 (defun main (args )
-"dsad")
+        (LLVMArrayType args args))

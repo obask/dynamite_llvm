@@ -233,9 +233,19 @@ Value *handleApply(string oper, vector<SyntaxTreeP> args) {
 }
 
 
-Value *internalCall(string Op, vector<Value*> calc_args) {
+Value* bitCastCall(string Op, vector<Value*> calc_args) {
+    Function *func = TheModule->getFunction(Op);
+    assert(func && "FFI operator not found!");
+    FunctionType *pType = func->getFunctionType();
+    fprintf(stderr, "// bitCastCall:\n");
+    pType->dump();
+    return nullptr;
+}
+
+
+Value* internalCall(string Op, vector<Value*> calc_args) {
     LLVMContext &C = getGlobalContext();
-    cout << "internalCall" << calc_args.size() << " " << Op << endl;
+    cout << "internalCall " << calc_args.size() << " " << Op << endl;
 
     fprintf(stderr, "ARGS:\n");
     for (int i=0; i< calc_args.size(); ++i) {
@@ -267,11 +277,37 @@ Value *internalCall(string Op, vector<Value*> calc_args) {
 
     // If it wasn't a builtin binary operator, it must be a user defined one. Emit
     // a call to it.
-    Function *F = TheModule->getFunction(Op);
-    assert(F && "binary operator not found!");
+    Function *func = TheModule->getFunction(Op);
+    assert(func && "binary operator not found!");
+
+    fprintf(stderr, "// bitCastCall:\n");
+    FunctionType *funType = func->getFunctionType();
+//    pType->dump();
+    unsigned int numParams = funType->getNumParams();
+    for (unsigned i=0; i < numParams; ++i) {
+        funType->getParamType(i)->dump();
+    }
+    fprintf(stderr, "->\n");
+    Type *returnType = funType->getReturnType();
+    returnType->dump();
+    fprintf(stderr, "------------\n");
+    vector<Value* > newArgs;
+    for (int i=0; i < calc_args.size(); ++i) {
+        calc_args[i]->getType()->dump();
+        Value *cast1 = Builder.CreatePointerCast(calc_args[i], funType->getParamType(i));
+        newArgs.push_back(cast1);
+    }
+    fprintf(stderr, "dumping:\n");
+    for (unsigned i=0; i < newArgs.size(); ++i) {
+        newArgs[i]->dump();
+    }
+    fprintf(stderr, "ok\n");
 
 //    Value *Ops[] = { L, R };
-    return Builder.CreateCall(F, calc_args, "binop");
+    CallInst *pInst = Builder.CreateCall(func, newArgs, "binop");
+    printf("OK\n");
+    PointerType *objType = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
+    return Builder.CreateBitCast(pInst, objType);
 }
 
 
@@ -526,34 +562,34 @@ void parseSignature(SyntaxTreeP tree) {
 //%4 = call %struct.LLVMOpaqueModule* @LLVMModuleCreateWithName(i8* %3)
 //ret void
 //}
-
-void genFunCallFFI() {
-
-    func_ZZZZZ = TheModule->getFunction(ZZZZZ);
-
-    Function::arg_iterator args = func_ZZZZZ->arg_begin();
-    Value* ptr_AAAAA = args++;
-    ptr_AAAAA->setName("AAAAA");
-
-    BasicBlock* label_23 = BasicBlock::Create(mod->getContext(), "",func_ZZZZZ,0);
-
-    // Block  (label_23)
-    AllocaInst* ptr_24 = new AllocaInst(PointerTy_5, "", label_23);
-    ptr_24->setAlignment(8);
-    StoreInst* void_25 = new StoreInst(ptr_AAAAA, ptr_24, false, label_23);
-    void_25->setAlignment(8);
-    LoadInst* ptr_26 = new LoadInst(ptr_24, "", false, label_23);
-    ptr_26->setAlignment(8);
-    CastInst* ptr_27 = new BitCastInst(ptr_26, PointerTy_7, "", label_23);
-    CallInst* ptr_28 = CallInst::Create(func_LLVMModuleCreateWithName, ptr_27, "", label_23);
-    ptr_28->setCallingConv(CallingConv::C);
-    ptr_28->setTailCall(false);
-    AttributeSet ptr_28_PAL;
-    ptr_28->setAttributes(ptr_28_PAL);
-
-    ReturnInst::Create(mod->getContext(), label_23);
-
-}
+//
+//void genFunCallFFI() {
+//
+//    func_ZZZZZ = TheModule->getFunction(ZZZZZ);
+//
+//    Function::arg_iterator args = func_ZZZZZ->arg_begin();
+//    Value* ptr_AAAAA = args++;
+//    ptr_AAAAA->setName("AAAAA");
+//
+//    BasicBlock* label_23 = BasicBlock::Create(mod->getContext(), "",func_ZZZZZ,0);
+//
+//    // Block  (label_23)
+//    AllocaInst* ptr_24 = new AllocaInst(PointerTy_5, "", label_23);
+//    ptr_24->setAlignment(8);
+//    StoreInst* void_25 = new StoreInst(ptr_AAAAA, ptr_24, false, label_23);
+//    void_25->setAlignment(8);
+//    LoadInst* ptr_26 = new LoadInst(ptr_24, "", false, label_23);
+//    ptr_26->setAlignment(8);
+//    CastInst* ptr_27 = new BitCastInst(ptr_26, PointerTy_7, "", label_23);
+//    CallInst* ptr_28 = CallInst::Create(func_LLVMModuleCreateWithName, ptr_27, "", label_23);
+//    ptr_28->setCallingConv(CallingConv::C);
+//    ptr_28->setTailCall(false);
+//    AttributeSet ptr_28_PAL;
+//    ptr_28->setAttributes(ptr_28_PAL);
+//
+//    ReturnInst::Create(mod->getContext(), label_23);
+//
+//}
 
 
 void handleTypeFFI(string name) {

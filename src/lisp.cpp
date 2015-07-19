@@ -23,11 +23,14 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/Scalar.h"
 
+#include "llvm/Support/DynamicLibrary.h"
+
 #include "ltoken.hpp"
 #include "SyntaxTree.hpp"
 #include "utilz.hpp"
 
 #include "handleAST.cpp"
+
 
 #include <sstream>
 
@@ -260,6 +263,7 @@ void finishLLVM() {
 
     TheModule->dump();
 
+
     Function *repl = TheModule->getFunction("main");
 
     if (!repl) {
@@ -294,7 +298,7 @@ int main() {
 
     string program;
 
-    ifstream myfile("/Users/obaskakov/ClionProjects/dynamite_llvm/program.ir", ios::binary);
+    ifstream myfile("/Users/oleg/ClionProjects/dynamite_llvm/program.ir", ios::binary);
 
 
     std::string line;
@@ -383,9 +387,15 @@ int main() {
 //        cout << res0->toString() << endl;
     }
 
+
+    auto ff = &LLVMArrayType;
+
+    //    LLVMArrayType(LLVMInt32Type(), 10);
+//    sys::DynamicLibrary::AddSymbol("LLVMArrayType", (void*)&LLVMArrayType);
+
+    cout << "finish..." << endl;
     finishLLVM();
 
-    cout << "finish!" << endl;
 
     return 0;
 }
