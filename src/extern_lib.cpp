@@ -51,6 +51,36 @@ void TypeDef(char* name, char* rawFields, char* rawParents) {
 
 }
 
+extern "C"
+LLVMTypeRef* createArrayTypeRef(unsigned len) {
+    LLVMTypeRef* xx = new LLVMTypeRef[len];
+    return xx;
+}
+
+extern "C"
+LLVMBool LLVMFalse() {
+    return 0;
+}
+
+extern "C"
+LLVMBool LLVMTrue() {
+    return 1;
+}
+
+extern "C"
+void printlnS(const char* ss) {
+    printf("%s", ss);
+}
+
+extern "C"
+unsigned notNullValueRef(LLVMValueRef ref) {
+    return ref == 0;
+}
+
+extern "C"
+void printlnI(unsigned i) {
+    printf("%d", i);
+}
 
 std::string
 resolveClassName(Object* obj) {

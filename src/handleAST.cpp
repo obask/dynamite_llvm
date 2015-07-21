@@ -19,6 +19,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IR/Value.h"
 #include "llvm/PassManager.h"
 
 #include "llvm/Support/TargetSelect.h"
@@ -50,6 +51,8 @@ Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBr
     Value *condVal0 = handleValue(cond);
     if (condVal0 == 0)
         return 0;
+
+    condVal0->dump();
 
     // Convert condition to a bool by comparing equal to 0.0.
     Value *condVal = Builder.CreateICmpNE(condVal0, ConstantInt::get(C, APInt(32, 0)), "ifcond");
@@ -97,101 +100,23 @@ Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBr
     return PN;
 }
 
-
-Value *handleValue(SyntaxTreeP tt) {
-    LLVMContext &C = getGlobalContext();
-    cout << "handleValue: " << tt->toString() << endl;
-
-    if (typeid(*tt) == typeid(ASymbol)
-            && tt->getString() == "null") {
-
-        cout << "dbg null 1 " << endl;
-
-        PointerType* PointerTy_struct_Object = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
-        Value* res = ConstantPointerNull::get(PointerTy_struct_Object);
-
-        cout << "dbg null 2 " << endl;
-
-        return res;
-    }
-
-    if (typeid(*tt) == typeid(ASymbol)
-            && '\"' == tt->getString().at(0)) {
-        return handleString(tt->getString());
-    }
-
-    if (typeid(*tt) == typeid(ASymbol)) {
-        string var = tt->getString();
-        AllocaInst *Vxx = NamedValues[var];
-        return Builder.CreateLoad(Vxx, var.c_str());
-    }
-
-    if (typeid(*tt) == typeid(ANumber)) {
-        cout << "handleNumber" << endl;
-        shared_ptr<ANumber> num = dynamic_pointer_cast<ANumber>(tt);
-        return ConstantInt::get(C, APInt(32, (uint64_t) num->value));
-    }
-
-    if (typeid(*tt) == typeid(ADouble)) {
-        cout << "handleDouble" << endl;
-        shared_ptr<ADouble> num = dynamic_pointer_cast<ADouble>(tt);
-        vector<Value*> args;
-        args.push_back(ConstantFP::get(C, APFloat(num->value)));
-        TheModule->dump();
-        return internalCall("createDouble", args);
-    }
-
-    // if
-    if (typeid(*tt) == typeid(ABranch)
-            && typeid(*tt->elemAt(0)) == typeid(ASymbol)
-            && tt->elemAt(0)->getString() == "if") {
-        return handleIfExpr(tt->elemAt(1), tt->elemAt(2), tt->elemAt(3));
-    }
-
-    // SelectApply
-    if (typeid(*tt) == typeid(ABranch)
-            && typeid(*tt->elemAt(0)) == typeid(ASymbol)
-            && tt->elemAt(0)->getString() == "SelectApply") {
-        string method = tt->elemAt(1)->getString();
-        int sz = (int) tt->getVector().size();
-        vector<SyntaxTreeP> args;
-        for (int i = 2; i < sz; ++i) {
-            args.push_back(tt->elemAt(i));
-        }
-        return handleSelectApply(method, args);
-    }
-
-    // Apply
-    if (typeid(*tt) == typeid(ABranch)
-            && typeid(*tt->elemAt(0)) == typeid(ASymbol)
-            && tt->elemAt(0)->getString() == "Apply") {
+Value* handleValDef(SyntaxTreeP varName, SyntaxTreeP value) {
+    string var = varName->getString();
+    cout << "handleValDef: " << var << endl;
+    Value *calcResult = handleValue(value);
 
 
-        string method = tt->elemAt(1)->getString();
-        int sz = (int) tt->getVector().size();
-        vector<SyntaxTreeP> args;
-        for (int i = 2; i < sz; ++i) {
-            args.push_back(tt->elemAt(i));
-        }
+    // save new variable
+    AllocaInst* ptr_context = Builder.CreateAlloca(calcResult->getType());
+    ptr_context->setAlignment(8);
+    // Add arguments to variable symbol table.
+    // FIXME should shadow up to stack vars
+    NamedValues[var] = ptr_context;
 
-        return handleApply(method, args);
-    }
-
-    // other ABranch
-    if (typeid(*tt) == typeid(ABranch)) {
-        string fun = tt->elemAt(0)->getString();
-        int sz = (int) tt->getVector().size();
-        vector<SyntaxTreeP> args;
-        for (int i = 1; i < sz; ++i) {
-            args.push_back(tt->elemAt(i));
-        }
-        return handleCall(fun, args);
-    }
-
-    throw std::logic_error(tt->toString());
-
-//    return NULL;
+    // Store the initial value into the alloca.
+    return Builder.CreateStore(calcResult, ptr_context);
 }
+
 
 
 Value *handleApply(string oper, vector<SyntaxTreeP> args) {
@@ -237,7 +162,7 @@ Value* bitCastCall(string Op, vector<Value*> calc_args) {
     Function *func = TheModule->getFunction(Op);
     assert(func && "FFI operator not found!");
     FunctionType *pType = func->getFunctionType();
-    fprintf(stderr, "// bitCastCall:\n");
+    fprintf(stderr, "// bitCastCall: %s|\n", Op.c_str());
     pType->dump();
     return nullptr;
 }
@@ -280,7 +205,7 @@ Value* internalCall(string Op, vector<Value*> calc_args) {
     Function *func = TheModule->getFunction(Op);
     assert(func && "binary operator not found!");
 
-    fprintf(stderr, "// bitCastCall:\n");
+    fprintf(stderr, "// bitCast: %s\n", Op.c_str());
     FunctionType *funType = func->getFunctionType();
 //    pType->dump();
     unsigned int numParams = funType->getNumParams();
@@ -304,10 +229,16 @@ Value* internalCall(string Op, vector<Value*> calc_args) {
     fprintf(stderr, "ok\n");
 
 //    Value *Ops[] = { L, R };
-    CallInst *pInst = Builder.CreateCall(func, newArgs, "binop");
+    CallInst *pInst = Builder.CreateCall(func, newArgs);
     printf("OK\n");
+
+    if (pInst->getType() == Type::getVoidTy(C)) {
+        return nullptr;
+    }
+    // else
     PointerType *objType = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
-    return Builder.CreateBitCast(pInst, objType);
+    return pInst;
+    // Builder.CreateBitCast(pInst, objType);
 }
 
 
@@ -363,16 +294,18 @@ Value *handleSelectApply(string Op, vector<SyntaxTreeP> args) {
     return internalCall(callee, calc_args);
 }
 
-
-Type *getPtrToOpaqueTypes(string typeName) {
+Type *getTypeOfName(string typeName) {
     LLVMContext &C = getGlobalContext();
     if (typeName == "EmptyTree") {
         return Type::getVoidTy(C);
     }
-    if (typeName == "ConstCharPtr") {
+    if (typeName == "String") {
         return PointerType::getUnqual(IntegerType::getInt8Ty(C));
     }
-    if (typeName == "Unsigned") {
+    if (typeName == "Int") {
+        return IntegerType::getInt32Ty(C);
+    }
+    if (typeName == "Boolean") {
         return IntegerType::getInt32Ty(C);
     }
     StructType *pType = TheModule->getTypeByName("struct." + typeName);
@@ -384,7 +317,21 @@ Type *getPtrToOpaqueTypes(string typeName) {
 }
 
 
-Function *handleSignature(const string &name, const vector<string> &fields, const string &returnType) {
+Type *getPtrToOpaqueTypes(SyntaxTreeP typeNameX) {
+    // array types
+    if (typeid(*typeNameX) == typeid(ABranch) && typeNameX->elemAt(0)->getString() == "Array") {
+        auto typeName = typeNameX->elemAt(1)->getString();
+        Type *typeOfName = getTypeOfName(typeName);
+        return PointerType::getUnqual(typeOfName);
+    }
+    // else simple type
+    auto typeName = typeNameX->getString();
+    return getTypeOfName(typeName);
+}
+
+
+
+Function *handleSignature(const string &name, const vector<SyntaxTreeP> &fields, SyntaxTreeP returnType) {
     LLVMContext &C = getGlobalContext();
     cout << "handleSignature " << name << " -> " << returnType << endl;
 
@@ -408,7 +355,7 @@ Function *handleSignature(const string &name, const vector<string> &fields, cons
     assert(theFunction);
 
     cerr << "-- theFunction" << endl;
-    theFunction->dump();
+//    theFunction->dump();
     cerr << endl;
     cerr.flush();
 
@@ -543,14 +490,10 @@ void parseSignature(SyntaxTreeP tree) {
     cout << "parseSignature " << endl;
     string name = tree->elemAt(1)->getString();
     auto rawFields = tree->elemAt(2)->getVector();
-    vector<string> fields;
-    for (auto it : rawFields) {
-        fields.push_back(it->getString());
-    }
     // Check bad function signature
     assert(tree->elemAt(3)->getString() == "->");
-    string resultType = tree->elemAt(4)->getString();
-    handleSignature(name, fields, resultType);
+    SyntaxTreeP resultType = tree->elemAt(4);
+    handleSignature(name, rawFields, resultType);
 }
 
 //; Function Attrs: nounwind ssp uwtable
@@ -607,6 +550,106 @@ void handleTypeFFI(string name) {
 }
 
 
+Value *handleValue(SyntaxTreeP tt) {
+    LLVMContext &C = getGlobalContext();
+    cout << "handleValue: " << tt->toString() << endl;
+
+    if (typeid(*tt) == typeid(ABranch) && tt->elemAt(0)->getString() == "ValDef") {
+        return handleValDef(tt->elemAt(1), tt->elemAt(2));
+    }
+
+    if (typeid(*tt) == typeid(ASymbol) && tt->getString() == "null") {
+
+        cout << "dbg null 1 " << endl;
+
+        PointerType* PointerTy_struct_Object = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
+        Value* res = ConstantPointerNull::get(PointerTy_struct_Object);
+
+        cout << "dbg null 2 " << endl;
+
+        return res;
+    }
+
+    if (typeid(*tt) == typeid(ASymbol) && tt->getString().at(0) == '\"') {
+        cout << "string " << endl;
+        return handleString(tt->getString());
+    }
+
+    if (typeid(*tt) == typeid(ASymbol)) {
+        string var = tt->getString();
+        cout << "var = " << var << endl;
+        AllocaInst *Vxx = NamedValues[var];
+        return Builder.CreateLoad(Vxx, var.c_str());
+    }
+
+    if (typeid(*tt) == typeid(ANumber)) {
+        cout << "handleNumber" << endl;
+        shared_ptr<ANumber> num = dynamic_pointer_cast<ANumber>(tt);
+        return ConstantInt::get(C, APInt(32, (uint64_t) num->value));
+    }
+
+    if (typeid(*tt) == typeid(ADouble)) {
+        cout << "handleDouble" << endl;
+        shared_ptr<ADouble> num = dynamic_pointer_cast<ADouble>(tt);
+        vector<Value*> args;
+        args.push_back(ConstantFP::get(C, APFloat(num->value)));
+        return internalCall("createDouble", args);
+    }
+
+    // if
+    if (typeid(*tt) == typeid(ABranch)
+        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
+        && tt->elemAt(0)->getString() == "if") {
+        return handleIfExpr(tt->elemAt(1), tt->elemAt(2), tt->elemAt(3));
+    }
+
+    // SelectApply
+    if (typeid(*tt) == typeid(ABranch)
+        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
+        && tt->elemAt(0)->getString() == "SelectApply") {
+        string method = tt->elemAt(1)->getString();
+        int sz = (int) tt->getVector().size();
+        vector<SyntaxTreeP> args;
+        for (int i = 2; i < sz; ++i) {
+            args.push_back(tt->elemAt(i));
+        }
+        return handleSelectApply(method, args);
+    }
+
+    // Apply
+    if (typeid(*tt) == typeid(ABranch)
+        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
+        && tt->elemAt(0)->getString() == "Apply") {
+
+
+        string method = tt->elemAt(1)->getString();
+        int sz = (int) tt->getVector().size();
+        vector<SyntaxTreeP> args;
+        for (int i = 2; i < sz; ++i) {
+            args.push_back(tt->elemAt(i));
+        }
+
+        return handleApply(method, args);
+    }
+
+    // other ABranch
+    if (typeid(*tt) == typeid(ABranch)) {
+        string fun = tt->elemAt(0)->getString();
+        int sz = (int) tt->getVector().size();
+        vector<SyntaxTreeP> args;
+        for (int i = 1; i < sz; ++i) {
+            args.push_back(tt->elemAt(i));
+        }
+        return handleCall(fun, args);
+    }
+
+    throw std::logic_error(tt->toString());
+
+//    return NULL;
+}
+
+
+
 void handleIR(SyntaxTreeP tree) {
     LLVMContext &C = getGlobalContext();
     cout << "handleIR " << tree->toString() << endl;
@@ -655,9 +698,6 @@ void handleIR(SyntaxTreeP tree) {
         return;
     }
 
-    if (cmd->value == "set") {
-        return handleSet(tree);
-    }
     // else call
 
     handleValue(tree);

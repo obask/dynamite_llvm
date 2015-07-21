@@ -264,7 +264,7 @@ void finishLLVM() {
     TheModule->dump();
 
 
-    Function *repl = TheModule->getFunction("main");
+    Function *repl = TheModule->getFunction("main1");
 
     if (!repl) {
         throw std::logic_error("finishLLVM main not found");
@@ -278,8 +278,8 @@ void finishLLVM() {
     void (*initFP2)() = (void (*)())(intptr_t)FPtr2;
     initFP2();
 
-    debugTypes();
-
+// FIXME  debugTypes();
+    printf("------------\n");
     // Cast it to the right type (takes no arguments, returns a double) so we
     // can call it as a native function.
     void* (*FP)() = (void* (*)())(intptr_t)FPtr;
@@ -298,7 +298,7 @@ int main() {
 
     string program;
 
-    ifstream myfile("/Users/oleg/ClionProjects/dynamite_llvm/program.ir", ios::binary);
+    ifstream myfile("/Users/obaskakov/ClionProjects/dynamite_llvm/program.ir", ios::binary);
 
 
     std::string line;
@@ -388,10 +388,10 @@ int main() {
     }
 
 
-    auto ff = &LLVMArrayType;
+//    auto ff = &LLVMArrayType;
 
     //    LLVMArrayType(LLVMInt32Type(), 10);
-//    sys::DynamicLibrary::AddSymbol("LLVMArrayType", (void*)&LLVMArrayType);
+    sys::DynamicLibrary::AddSymbol("LLVMArrayType", (void*)&LLVMArrayType);
 
     cout << "finish..." << endl;
     finishLLVM();

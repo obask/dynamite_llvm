@@ -74,3 +74,64 @@
     (ValDef mod (LLVMModuleCreateWithName "debug.ll" ) )
     (LLVMSetTarget mod "x86_64-apple-macosx10.10.0" ) ) )
 
+
+
+(Signature LLVMGetGlobalContext  () -> LLVMOpaqueContext)
+
+(Signature LLVMModuleCreateWithName  (ConstCharPtr ) -> LLVMOpaqueModule)
+
+(Signature LLVMSetTarget  (LLVMOpaqueModule ConstCharPtr ) -> EmptyTree)
+
+(Signature LLVMArrayType  (LLVMTypeRef Unsigned ) -> LLVMTypeRef)
+
+
+(defun main (args )
+    (ValDef ctx (LLVMGetGlobalContext ) )
+    (ValDef mod (LLVMModuleCreateWithName "debug.ll" ) )
+    (LLVMSetTarget mod "x86_64-apple-macosx10.10.0" )
+    (ValDef Int8Type (LLVMInt8Type ) )
+    (ValDef ArrayTy_0 (LLVMArrayType Int8Type 9 ) )
+    (ValDef PointerTy_1 (LLVMPointerType ArrayTy_0 0 ) )
+    (ValDef ArrayTy_2 (LLVMArrayType Int8Type 27 ) )
+    (ValDef PointerTy_3 (LLVMPointerType ArrayTy_2 0 ) )
+    "return"
+)
+
+//= ==================
+
+
+
+(Signature LLVMGetGlobalContext  () -> LLVMOpaqueContext)
+(Signature LLVMModuleCreateWithName  (String ) -> LLVMOpaqueModule)
+(Signature LLVMSetTarget  (LLVMOpaqueModule String ) -> EmptyTree)
+(Signature LLVMInt8Type  () -> LLVMOpaqueType)
+(Signature LLVMInt32Type  () -> LLVMOpaqueType)
+(Signature LLVMArrayType  (LLVMOpaqueType Int ) -> LLVMOpaqueType)
+(Signature LLVMPointerType  (LLVMOpaqueType Int ) -> LLVMOpaqueType)
+(Signature LLVMFunctionType  (LLVMOpaqueType (Array LLVMTypeRef) Int LLVMBool ) -> LLVMOpaqueType)
+(Signature createArrayTypeRef  (Int ) -> (Array LLVMTypeRef) )
+(Signature LLVMTrue  () -> LLVMBool)
+(Signature LLVMFalse  () -> LLVMBool)
+
+(Signature LLVMDumpModule (LLVMOpaqueModule) -> EmptyTree)
+
+
+(defun main1 ()
+    (ValDef LLVMCCallConv 0 )
+    (ValDef ctx (LLVMGetGlobalContext ) )
+    (ValDef mod (LLVMModuleCreateWithName "debug.ll" ) )
+    (LLVMSetTarget mod "x86_64-apple-macosx10.10.0" )
+    (ValDef Int8Type (LLVMInt8Type ) )
+    (ValDef Int32Type (LLVMInt32Type ) )
+    (ValDef ArrayTy_0 (LLVMArrayType Int8Type 7 ) )
+    (ValDef PointerTy_1 (LLVMPointerType ArrayTy_0 0 ) )
+    (ValDef args_count13 0 )
+    (ValDef FuncTy_2_args (createArrayTypeRef args_count13 ) )
+    (ValDef FuncTy_2 (LLVMFunctionType Int32Type FuncTy_2_args args_count13 (LLVMFalse) ) )
+
+    (LLVMDumpModule mod)
+
+    (newString "sss")
+)
+
+

@@ -473,7 +473,8 @@ Value *handleString(string varRaw) {
     const_ptr_5_indices.push_back(ConstantInt::get(C, APInt(32, 0)));
     Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(gvar_array__str, const_ptr_5_indices);
 
-    return Builder.CreateCall(fun, const_ptr_5, "newString");
+//    return Builder.CreateCall(fun, const_ptr_5, "newString");
+    return const_ptr_5;
 }
 
 
