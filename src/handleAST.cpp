@@ -71,8 +71,8 @@ Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBr
     Builder.SetInsertPoint(ThenBB);
 
     Value *thenVal = handleValue(thenBranch);
-    if (thenVal == NULL)
-        return NULL;
+//    if (thenVal == NULL)
+//        return NULL;
 
     Builder.CreateBr(MergeBB);
     // Codegen of 'Then' can change the current block, update ThenBB for the PHI.
@@ -83,8 +83,8 @@ Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBr
     Builder.SetInsertPoint(ElseBB);
 
     Value *elseVal = handleValue(elseBranch);
-    if (elseVal == NULL)
-        return NULL;
+//    if (elseVal == NULL)
+//        return NULL;
 
     Builder.CreateBr(MergeBB);
     // Codegen of 'Else' can change the current block, update ElseBB for the PHI.
@@ -93,11 +93,16 @@ Value *handleIfExpr(SyntaxTreeP cond, SyntaxTreeP thenBranch, SyntaxTreeP elseBr
     // Emit merge block.
     TheFunction->getBasicBlockList().push_back(MergeBB);
     Builder.SetInsertPoint(MergeBB);
-    PHINode *PN = Builder.CreatePHI(Type::getInt32Ty(C), 2, "iftmp");
 
-    PN->addIncoming(thenVal, ThenBB);
-    PN->addIncoming(elseVal, ElseBB);
-    return PN;
+    if (thenVal == nullptr || elseVal == nullptr) {
+        return nullptr;
+    }
+    // else
+    assert(thenVal->getType() == elseVal->getType());
+    PHINode *phiNode = Builder.CreatePHI(thenVal->getType(), 2, "iftmp");
+    phiNode->addIncoming(thenVal, ThenBB);
+    phiNode->addIncoming(elseVal, ElseBB);
+    return phiNode;
 }
 
 Value* handleValDef(SyntaxTreeP varName, SyntaxTreeP value) {
@@ -232,11 +237,12 @@ Value* internalCall(string Op, vector<Value*> calc_args) {
     CallInst *pInst = Builder.CreateCall(func, newArgs);
     printf("OK\n");
 
-    if (pInst->getType() == Type::getVoidTy(C)) {
-        return nullptr;
-    }
+//    if (pInst->getType() != Type::getVoidTy(C)) {
+//        return pInst;
+//    }
+
     // else
-    PointerType *objType = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
+//    PointerType *objType = PointerType::getUnqual(TheModule->getTypeByName("struct.Object"));
     return pInst;
     // Builder.CreateBitCast(pInst, objType);
 }
@@ -411,21 +417,17 @@ Function *handleDefun(SyntaxTreeP tree) {
     }
     cout << "DBG 4" << endl;
 
-    vector<SyntaxTreeP> body;
-    int sz = (int)tree->getVector().size();
-    for (int i=3; i < sz; ++i) {
-        body.push_back(tree->elemAt(i));
-    }
-    Value *RetVal;
-
+    vector<SyntaxTreeP> body = tree->getVector().at(3)->getVector();
     cout << "BODY:" << endl;
     for (SyntaxTreeP tmp: body) {
         cout << "-> " << tmp->toString() << endl;
     }
 
-    for (auto xx: body) {
-        RetVal = handleValue(xx);
-    }
+    Value *RetVal = handleValue(tree->getVector().at(3));
+
+    fprintf(stderr, "!!!!!!!\n");
+    RetVal->dump();
+    fprintf(stderr, "???????\n");
 
     if (RetVal) {
         // Finish off the function.
@@ -446,21 +448,16 @@ Function *handleDefun(SyntaxTreeP tree) {
 
 
 
-void handleSet(SyntaxTreeP tree) {
+Value* handleAssign(string name, SyntaxTreeP valueX) {
     LLVMContext &C = getGlobalContext();
-    cout << "handleSet" << endl;
+    cout << "handleAssign" << endl;
 
-    string name = tree->elemAt(1)->getString();
-    SyntaxTreeP body = tree->elemAt(2);
+    Value* res = handleValue(valueX);
 
-    FunctionType *FT = FunctionType::get(Type::getDoubleTy(C), {}, false);
-    Function *repl = Function::Create(FT, Function::ExternalLinkage, "REPL", TheModule);
+    AllocaInst* var = NamedValues.at(name);
 
-    // Create a new basic block to start insertion into.
-    BasicBlock *BB = BasicBlock::Create(C, "entry", repl);
-    Builder.SetInsertPoint(BB);
-    handleValue(body);
-    return;
+    Value* xxx = Builder.CreateStore(res, var);
+    return xxx;
 }
 
 
@@ -550,12 +547,103 @@ void handleTypeFFI(string name) {
 }
 
 
+AllocaInst* handleArrayCreate(string arrayTypeX, SyntaxTreeP arraySizeX) {
+    Value* arraySize = handleValue(arraySizeX);
+    Type* arrayType = getTypeOfName(arrayTypeX);
+
+//    ArrayType* ArrayTy_3 = ArrayType::get(arrayType, arraySize);
+
+    AllocaInst* ptr_ZZZ = Builder.CreateAlloca(arrayType, arraySize, "ArrayCreate");
+    ptr_ZZZ->setAlignment(16);
+    return ptr_ZZZ;
+}
+
+
+
+
+Value* handleArrayCreate(string varNameX, SyntaxTreeP posX, SyntaxTreeP valueX) {
+    AllocaInst *varName = NamedValues.at(varNameX);
+    Value *pos = handleValue(posX);
+    Value *value = handleValue(valueX);
+
+    vector<Value *> idxList;
+    idxList.push_back(pos);
+    Value *ptr_24 = Builder.CreateGEP(varName, idxList, "");
+    StoreInst *void_25 = Builder.CreateStore(value, ptr_24, false);
+    return void_25;
+}
+
+
+// params counted from one
+Value *handleValueABranch(string cmd, const vector<SyntaxTreeP> &params) {
+
+    // Begin
+    if (cmd == "Block") {
+        unsigned lastElem = params.size() - 1;
+        for (unsigned i=1; i < lastElem; ++i) {
+            handleIR(params[i]);
+        }
+        return handleValue(params[lastElem]);
+    }
+
+    // Assign
+    if (cmd == "Assign") {
+        auto name = params.at(1)->getString();
+        auto value = params.at(2);
+        return handleAssign(name, value);
+    }
+
+    // if
+    if (cmd == "If") {
+        assert(params.at(3)->getString() == "Else");
+        return handleIfExpr(params.at(1), params.at(2), params.at(4));
+    }
+    if (cmd == "SelectApply") {
+        string method = params.at(1)->getString();
+        int sz = (int) params.size();
+        vector<SyntaxTreeP> argsX;
+        for (int i = 2; i < sz; ++i) {
+            argsX.push_back(params.at(i));
+        }
+        return handleSelectApply(method, argsX);
+    }
+    if (cmd == "Apply") {
+        string method = params.at(1)->getString();
+        int sz = (int) params.size();
+        vector<SyntaxTreeP> argsX;
+        for (int i = 2; i < sz; ++i) {
+            argsX.push_back(params.at(i));
+        }
+        return handleApply(method, argsX);
+    }
+    if (cmd == "ArrayCreate") {
+        string arrayType = params.at(1)->getString();
+        SyntaxTreeP arraySize = params.at(2);
+        return handleArrayCreate(arrayType, arraySize);
+    }
+    // other ABranch
+    vector<SyntaxTreeP> argsX;
+    int sz = params.size();
+    for (size_t i = 1; i < sz; ++i) {
+        argsX.push_back(params.at(i));
+    }
+    return handleCall(cmd, argsX);
+}
+
+
+
 Value *handleValue(SyntaxTreeP tt) {
     LLVMContext &C = getGlobalContext();
     cout << "handleValue: " << tt->toString() << endl;
 
-    if (typeid(*tt) == typeid(ABranch) && tt->elemAt(0)->getString() == "ValDef") {
-        return handleValDef(tt->elemAt(1), tt->elemAt(2));
+    if (typeid(*tt) == typeid(ABranch)) {
+        string cmd = tt->elemAt(0)->getString();
+        vector<SyntaxTreeP> args = tt->getVector();
+        return handleValueABranch(cmd, args);
+    }
+
+    if (typeid(*tt) == typeid(ASymbol) && tt->getString() == "EmptyTree") {
+        return nullptr;
     }
 
     if (typeid(*tt) == typeid(ASymbol) && tt->getString() == "null") {
@@ -596,52 +684,6 @@ Value *handleValue(SyntaxTreeP tt) {
         return internalCall("createDouble", args);
     }
 
-    // if
-    if (typeid(*tt) == typeid(ABranch)
-        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
-        && tt->elemAt(0)->getString() == "if") {
-        return handleIfExpr(tt->elemAt(1), tt->elemAt(2), tt->elemAt(3));
-    }
-
-    // SelectApply
-    if (typeid(*tt) == typeid(ABranch)
-        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
-        && tt->elemAt(0)->getString() == "SelectApply") {
-        string method = tt->elemAt(1)->getString();
-        int sz = (int) tt->getVector().size();
-        vector<SyntaxTreeP> args;
-        for (int i = 2; i < sz; ++i) {
-            args.push_back(tt->elemAt(i));
-        }
-        return handleSelectApply(method, args);
-    }
-
-    // Apply
-    if (typeid(*tt) == typeid(ABranch)
-        && typeid(*tt->elemAt(0)) == typeid(ASymbol)
-        && tt->elemAt(0)->getString() == "Apply") {
-
-
-        string method = tt->elemAt(1)->getString();
-        int sz = (int) tt->getVector().size();
-        vector<SyntaxTreeP> args;
-        for (int i = 2; i < sz; ++i) {
-            args.push_back(tt->elemAt(i));
-        }
-
-        return handleApply(method, args);
-    }
-
-    // other ABranch
-    if (typeid(*tt) == typeid(ABranch)) {
-        string fun = tt->elemAt(0)->getString();
-        int sz = (int) tt->getVector().size();
-        vector<SyntaxTreeP> args;
-        for (int i = 1; i < sz; ++i) {
-            args.push_back(tt->elemAt(i));
-        }
-        return handleCall(fun, args);
-    }
 
     throw std::logic_error(tt->toString());
 
@@ -653,22 +695,21 @@ Value *handleValue(SyntaxTreeP tt) {
 void handleIR(SyntaxTreeP tree) {
     LLVMContext &C = getGlobalContext();
     cout << "handleIR " << tree->toString() << endl;
+    string cmd = tree->elemAt(0)->getString();
+    vector<SyntaxTreeP> params = tree->getVector();
 
-    SyntaxTreeP tmp2 = tree->elemAt(0);
-    shared_ptr<ASymbol> cmd = dynamic_pointer_cast<ASymbol>(tmp2);
-
-    if (cmd->value == "TypeDef") {
+    if (cmd == "TypeDef") {
         parseTypeDef(tree);
         return;
     }
 
-    if (cmd->value == "Signature") {
+    if (cmd == "Signature") {
         parseSignature(tree);
         return;
     }
 
 
-    if (cmd->value == "TypeFFI") {
+    if (cmd == "TypeFFI") {
         handleTypeFFI(tree->elemAt(1)->getString());
         return;
     }
@@ -693,16 +734,32 @@ void handleIR(SyntaxTreeP tree) {
 //        return;
 //    }
 
-    if (cmd->value == "defun") {
+    if (cmd == "defun") {
         handleDefun(tree);
         return;
     }
 
-    // else call
+    if (cmd == "ArrayAssign") {
+        string varName = params.at(1)->getString();
+        SyntaxTreeP pos = params.at(2);
+        SyntaxTreeP value = params.at(3);
+        return;
+    }
+
+    if (cmd == "ValDef") {
+        handleValDef(params.at(1), params.at(2));
+        return;
+    }
+
+    // else call void function
 
     handleValue(tree);
+    return;
 
-    throw std::logic_error("Not implemented yet\n");
+//    throw std::logic_error("Not implemented yet\n");
+
+//    return;
+
 
 //    AllocaInst* ptr_ptr1 = Builder.CreateAlloca(PointerTy_struct_list, 0, "ptr");
 //    AllocaInst* ptr_ptr2 = Builder.CreateAlloca(PointerTy_tmp1, 0, "ptr2");

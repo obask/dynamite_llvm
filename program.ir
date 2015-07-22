@@ -18,8 +18,14 @@
 
 (Signature printlnS (String) -> EmptyTree)
 
+(Signature LLVMDumpModule (LLVMOpaqueModule) -> EmptyTree)
+
 
 (defun main1 ( )
+(Block
+    (ValDef tt (ArrayCreate Int 12))
+    (ArrayAssign tt 2 1 )
+
     (ValDef LLVMCCallConv 0 )
     (ValDef ctx (LLVMGetGlobalContext ) )
     (ValDef mod (LLVMModuleCreateWithName "debug.ll" ) )
@@ -29,18 +35,27 @@
     (ValDef ArrayTy_0 (LLVMArrayType Int8Type 7 ) )
     (ValDef PointerTy_1 (LLVMPointerType ArrayTy_0 0 ) )
     (ValDef args_count13 0 )
-    (ValDef FuncTy_2_args (arrayCreateLLVMTypeRef args_count13 ) )
+    (ValDef FuncTy_2_args (ArrayCreate LLVMTypeRef args_count13 ))
     (ValDef FuncTy_2 (LLVMFunctionType Int32Type FuncTy_2_args args_count13 (LLVMFalse ) ) )
     (ValDef PointerTy_3 (LLVMPointerType Int32Type 0 ) )
     (ValDef PointerTy_4 (LLVMPointerType Int8Type 0 ) )
     (ValDef args_count6 1 )
-    (ValDef FuncTy_6_args (arrayCreateLLVMTypeRef args_count6 ) )
-    (arraySetLLVMTypeRef FuncTy_6_args 0 PointerTy_4 )
+    (ValDef FuncTy_6_args (ArrayCreate LLVMTypeRef args_count6 ))
+    (ArrayAssign FuncTy_6_args 0 PointerTy_4 )
     (ValDef FuncTy_6 (LLVMFunctionType Int32Type FuncTy_6_args args_count6 (LLVMTrue ) ) )
     (ValDef PointerTy_5 (LLVMPointerType FuncTy_6 0 ) )
     (ValDef func_main (LLVMGetNamedFunction mod "main" ) )
-    (if (notNullValueRef func_main )
-        (ValDef func_main (LLVMAddFunction mod "main" FuncTy_2 ) )
-        (ValDef tmp (LLVMAddFunction mod "main2" FuncTy_2 )) )
-    (printlnS "helloDotty!" )
-)
+    (If (notNullValueRef func_main )
+        (Block
+            (Assign func_main (LLVMAddFunction mod "main" FuncTy_2 ) )
+            (LLVMSetFunctionCallConv func_main LLVMCCallConv ) )
+        Else
+        EmptyTree )
+
+
+    (LLVMDumpModule mod)
+
+
+    (newString "helloDotty!" )
+))
+
