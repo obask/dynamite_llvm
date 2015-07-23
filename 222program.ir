@@ -1,0 +1,61 @@
+
+(Signature LLVMGetGlobalContext  () -> LLVMOpaqueContext)
+(Signature LLVMModuleCreateWithName  (String ) -> LLVMOpaqueModule)
+(Signature LLVMSetTarget  (LLVMOpaqueModule String ) -> EmptyTree)
+(Signature LLVMInt8Type  () -> LLVMOpaqueType)
+(Signature LLVMInt32Type  () -> LLVMOpaqueType)
+(Signature LLVMArrayType  (LLVMOpaqueType Int ) -> LLVMOpaqueType)
+(Signature LLVMPointerType  (LLVMOpaqueType Int ) -> LLVMOpaqueType)
+(Signature LLVMFunctionType  (LLVMOpaqueType (Array LLVMTypeRef) Int LLVMBool ) -> LLVMOpaqueType)
+(Signature arrayCreateLLVMTypeRef  (Int ) -> (Array LLVMTypeRef) )
+(Signature arraySetLLVMTypeRef  ((Array LLVMTypeRef) Int LLVMOpaqueType ) -> EmptyTree)
+(Signature LLVMGetNamedFunction  (LLVMOpaqueModule String ) -> LLVMOpaqueValue)
+(Signature LLVMAddFunction  (LLVMOpaqueModule String LLVMOpaqueType ) -> LLVMOpaqueValue)
+(Signature LLVMSetFunctionCallConv  (LLVMOpaqueValue Int ) -> EmptyTree)
+(Signature notNullValueRef  (LLVMOpaqueValue ) -> Boolean)
+(Signature LLVMTrue  () -> LLVMBool)
+(Signature LLVMFalse  () -> LLVMBool)
+
+(Signature printlnS (String) -> EmptyTree)
+
+(Signature LLVMDumpModule (LLVMOpaqueModule) -> EmptyTree)
+
+
+(defun main1 ( )
+(Block
+    (ValDef tt (ArrayCreate Int 12))
+    (ArrayAssign tt 2 1 )
+
+    (ValDef LLVMCCallConv 0 )
+    (ValDef ctx (LLVMGetGlobalContext ) )
+    (ValDef mod (LLVMModuleCreateWithName "debug.ll" ) )
+    (LLVMSetTarget mod "x86_64-apple-macosx10.10.0" )
+    (ValDef Int8Type (LLVMInt8Type ) )
+    (ValDef Int32Type (LLVMInt32Type ) )
+    (ValDef ArrayTy_0 (LLVMArrayType Int8Type 7 ) )
+    (ValDef PointerTy_1 (LLVMPointerType ArrayTy_0 0 ) )
+    (ValDef args_count13 0 )
+    (ValDef FuncTy_2_args (ArrayCreate LLVMTypeRef args_count13 ))
+    (ValDef FuncTy_2 (LLVMFunctionType Int32Type FuncTy_2_args args_count13 (LLVMFalse ) ) )
+    (ValDef PointerTy_3 (LLVMPointerType Int32Type 0 ) )
+    (ValDef PointerTy_4 (LLVMPointerType Int8Type 0 ) )
+    (ValDef args_count6 1 )
+    (ValDef FuncTy_6_args (ArrayCreate LLVMTypeRef args_count6 ))
+    (ArrayAssign FuncTy_6_args 0 PointerTy_4 )
+    (ValDef FuncTy_6 (LLVMFunctionType Int32Type FuncTy_6_args args_count6 (LLVMTrue ) ) )
+    (ValDef PointerTy_5 (LLVMPointerType FuncTy_6 0 ) )
+    (ValDef func_main (LLVMGetNamedFunction mod "main" ) )
+    (If (notNullValueRef func_main )
+        (Block
+            (Assign func_main (LLVMAddFunction mod "main" FuncTy_2 ) )
+            (LLVMSetFunctionCallConv func_main LLVMCCallConv ) )
+        Else
+        EmptyTree )
+
+
+    (LLVMDumpModule mod)
+
+
+    (newString "helloDotty!" )
+))
+

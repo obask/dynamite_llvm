@@ -264,6 +264,10 @@ void finishLLVM() {
     TheModule->dump();
 
 
+    int _sdf = 123;
+
+    int s = 1 + _sdf;
+
     Function *repl = TheModule->getFunction("main1");
 
     if (!repl) {

@@ -311,6 +311,9 @@ Type *getTypeOfName(string typeName) {
     if (typeName == "Int") {
         return IntegerType::getInt32Ty(C);
     }
+    if (typeName == "Long") {
+        return IntegerType::getInt64Ty(C);
+    }
     if (typeName == "Boolean") {
         return IntegerType::getInt32Ty(C);
     }

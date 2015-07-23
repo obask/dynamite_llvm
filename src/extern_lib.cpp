@@ -106,6 +106,11 @@ resolveMetod(Object *obj, std::string methodName) {
     return res;
 }
 
+extern "C"
+long intToLong(int a) {
+    return a;
+}
+
 
 extern "C"
 Object* callFFI0(char* methodName, Object* obj) {
